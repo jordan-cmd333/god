@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Inscription — Budget Control{% endblock %}
+{% block header %}{% endblock %}
+{% block nav %}{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-brand">
+    <div class="logo">💰</div>
+    <h1>Creer un compte</h1>
+    <p>Vos 11 categories de depenses sont pretes des l'inscription.</p>
+  </div>
+
+  <form method="post" class="card">
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<span class="helptext">{{ field.help_text|safe }}</span>{% endif %}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-block">Creer mon compte</button>
+  </form>
+
+  <p class="auth-footer">
+    Deja inscrit ? <a href="{% url 'login' %}">Se connecter</a>
+  </p>
+</div>
+{% endblock %}

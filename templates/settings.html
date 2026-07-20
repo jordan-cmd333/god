@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Parametres — Budget Control{% endblock %}
+{% block page_title %}Parametres{% endblock %}
+{% block page_subtitle %}{{ user.username }}{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <h2 class="card-title">Preferences</h2>
+  <form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <button class="btn btn-block">Enregistrer</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 class="card-title">Mes donnees</h2>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="k">Depenses</div>
+      <div class="v">{{ stats.expenses }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">Total cumule</div>
+      <div class="v">{{ stats.total|money }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">Categories</div>
+      <div class="v">{{ stats.categories }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">Limites actives</div>
+      <div class="v">{{ stats.limits }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="card-title">Exporter mes donnees</h2>
+  <div class="btn-row">
+    <a class="btn btn-ghost" href="{% url 'export_excel' %}">📊 Tout en Excel</a>
+    <a class="btn btn-ghost" href="{% url 'export_pdf' %}?kind=year">📄 Rapport PDF</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="card-title">Compte</h2>
+  <p class="helptext" style="margin-bottom:12px">
+    Vos donnees sont isolees par compte : chaque requete est filtree sur
+    l'utilisateur connecte et les mots de passe sont stockes hachés.
+  </p>
+  <form method="post" action="{% url 'logout' %}">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block">Se deconnecter</button>
+  </form>
+</div>
+{% endblock %}

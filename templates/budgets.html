@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Budgets — Budget Control{% endblock %}
+{% block page_title %}Budgets et limites{% endblock %}
+{% block page_subtitle %}Alerte a {{ user.profile.alert_threshold|default:80 }} % puis au depassement{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <h2 class="card-title">Nouvelle limite</h2>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.period.id_for_label }}">Periode</label>
+        {{ form.period }}
+      </div>
+      <div class="field">
+        <label for="{{ form.amount.id_for_label }}">Montant ({{ currency }})</label>
+        {{ form.amount }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.category.id_for_label }}">Categorie</label>
+      {{ form.category }}
+      <span class="helptext">
+        Laissez « Toutes categories » pour plafonner l'ensemble de vos depenses.
+      </span>
+    </div>
+    <button class="btn btn-block">Definir la limite</button>
+  </form>
+</div>
+
+{% regroup statuses by limit.get_period_display as groups %}
+
+{% for group in groups %}
+  <div class="card">
+    <h2 class="card-title">Limite {{ group.grouper|lower }}</h2>
+    {% for status in group.list %}
+      <div class="limit">
+        <div class="limit-head">
+          <span class="limit-name">
+            <span class="dot" style="background:{{ status.color }}"></span>
+            {{ status.target }}
+          </span>
+          <span class="limit-amounts">
+            <b>{{ status.spent|money }}</b> / {{ status.amount|money }}
+          </span>
+        </div>
+
+        <div class="bar {% if status.is_exceeded %}is-exceeded{% elif status.is_warning %}is-warning{% endif %}">
+          <span style="width:{{ status.bar_percent|floatformat:0 }}%"></span>
+        </div>
+
+        <div class="limit-foot">
+          <span>
+            {{ status.percent|floatformat:0 }} % ·
+            du {{ status.period.start|date:"d/m" }} au {{ status.period.end|date:"d/m/Y" }}
+          </span>
+          <span class="row-actions">
+            <a class="btn btn-ghost btn-sm" href="{% url 'budget_edit' status.limit.pk %}">✏️</a>
+            <form method="post" action="{% url 'budget_delete' status.limit.pk %}"
+                  onsubmit="return confirm('Supprimer cette limite ?')">
+              {% csrf_token %}
+              <button class="btn btn-danger btn-sm">🗑</button>
+            </form>
+          </span>
+        </div>
+
+        {% if status.is_exceeded %}
+          <div class="alert alert-exceeded" style="margin:10px 0 0">
+            <span class="ico">⛔</span>
+            <div>Limite depassee de {{ status.remaining|abs_value|money }} {{ currency }}.</div>
+          </div>
+        {% elif status.is_warning %}
+          <div class="alert alert-warning" style="margin:10px 0 0">
+            <span class="ico">⚠️</span>
+            <div>
+              Seuil d'alerte atteint. Il reste {{ status.remaining|money }} {{ currency }}.
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% empty %}
+  <div class="card">
+    <div class="empty">
+      <span class="big">🎯</span>
+      Aucune limite pour l'instant.<br>
+      Definissez-en une ci-dessus pour suivre votre progression.
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

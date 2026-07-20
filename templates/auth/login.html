@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Connexion — Budget Control{% endblock %}
+{% block header %}{% endblock %}
+{% block nav %}{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-brand">
+    <div class="logo">💰</div>
+    <h1>Budget Control</h1>
+    <p>Suivez vos depenses, tenez vos limites.</p>
+  </div>
+
+  <form method="post" class="card">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error"><span class="ico">⛔</span>
+        <div>Nom d'utilisateur ou mot de passe incorrect.</div>
+      </div>
+    {% endif %}
+
+    <div class="field">
+      <label for="{{ form.username.id_for_label }}">Nom d'utilisateur</label>
+      {{ form.username }}
+    </div>
+    <div class="field">
+      <label for="{{ form.password.id_for_label }}">Mot de passe</label>
+      {{ form.password }}
+    </div>
+
+    <button type="submit" class="btn btn-block">Se connecter</button>
+  </form>
+
+  <p class="auth-footer">
+    Pas encore de compte ? <a href="{% url 'signup' %}">Creer un compte</a>
+  </p>
+</div>
+{% endblock %}

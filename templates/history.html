@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Historique — Budget Control{% endblock %}
+{% block page_title %}Historique{% endblock %}
+{% block page_subtitle %}{{ count }} depense{{ count|pluralize }} filtree{{ count|pluralize }}{% endblock %}
+
+{% block content %}
+
+{# ------------------------------------------------------- Filtres rapides #}
+<div class="pill-scroll">
+  <a class="chip {% if not form.preset.value %}is-active{% endif %}" href="{% url 'history' %}">Tout</a>
+  <a class="chip {% if form.preset.value == 'day' %}is-active{% endif %}" href="?preset=day">Aujourd'hui</a>
+  <a class="chip {% if form.preset.value == 'week' %}is-active{% endif %}" href="?preset=week">Cette semaine</a>
+  <a class="chip {% if form.preset.value == 'month' %}is-active{% endif %}" href="?preset=month">Ce mois</a>
+  <a class="chip {% if form.preset.value == 'year' %}is-active{% endif %}" href="?preset=year">Cette annee</a>
+</div>
+
+<div class="summary-bar">
+  <span>Total filtre</span>
+  <b>{{ total|money }} {{ currency }}</b>
+</div>
+
+{# ----------------------------------------------------- Filtres detailles #}
+<details class="card filters" {% if querystring %}open{% endif %}>
+  <summary>Filtres avances</summary>
+  <form method="get" class="filters-body">
+    <div class="field">
+      <label for="{{ form.preset.id_for_label }}">Periode</label>
+      {{ form.preset }}
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.date_from.id_for_label }}">Du</label>
+        {{ form.date_from }}
+      </div>
+      <div class="field">
+        <label for="{{ form.date_to.id_for_label }}">Au</label>
+        {{ form.date_to }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.category.id_for_label }}">Categorie</label>
+      {{ form.category }}
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.min_amount.id_for_label }}">Montant min</label>
+        {{ form.min_amount }}
+      </div>
+      <div class="field">
+        <label for="{{ form.max_amount.id_for_label }}">Montant max</label>
+        {{ form.max_amount }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.q.id_for_label }}">Recherche</label>
+      {{ form.q }}
+    </div>
+    <div class="btn-row">
+      <button type="submit" class="btn">Filtrer</button>
+      <a href="{% url 'history' %}" class="btn btn-ghost">Reinitialiser</a>
+    </div>
+  </form>
+</details>
+
+{# --------------------------------------------------------------- Exports #}
+<div class="btn-row" style="margin-bottom:14px">
+  <a class="btn btn-ghost" href="{% url 'export_excel' %}{% if querystring %}?{{ querystring }}{% endif %}">
+    📊 Export Excel
+  </a>
+  <a class="btn btn-ghost" href="{% url 'export_pdf' %}{% if querystring %}?{{ querystring }}{% endif %}">
+    📄 Export PDF
+  </a>
+</div>
+
+{# ----------------------------------------------------------------- Liste #}
+<div class="card">
+  <ul class="list">
+    {% for expense in expenses %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ expense.category.color }}">
+          {{ expense.category.icon|icon }}
+        </span>
+        <span class="row-main">
+          <span class="t">{{ expense.description|default:expense.category.name }}</span>
+          <span class="s">
+            {{ expense.date|date:"d/m/Y" }} · {{ expense.category.name }}
+            · {{ expense.get_payment_method_display }}
+          </span>
+        </span>
+        <span class="row-amount">{{ expense.amount|money }}</span>
+        <a class="btn btn-ghost btn-sm" href="{% url 'expense_edit' expense.pk %}">✏️</a>
+      </li>
+    {% empty %}
+      <div class="empty">
+        <span class="big">🔍</span>
+        Aucune depense ne correspond a ces filtres.
+      </div>
+    {% endfor %}
+  </ul>
+
+  {% if count > 300 %}
+    <p class="table-note">
+      300 depenses affichees sur {{ count }}. Affinez les filtres ou exportez en Excel
+      pour la liste complete.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Categories — Budget Control{% endblock %}
+{% block page_title %}Categories{% endblock %}
+{% block page_subtitle %}Personnalisez vos postes de depense{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <h2 class="card-title">Nouvelle categorie</h2>
+  <form method="post" action="{% url 'category_create' %}">
+    {% csrf_token %}
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.name.id_for_label }}">Nom</label>
+        {{ form.name }}
+      </div>
+      <div class="field">
+        <label for="{{ form.color.id_for_label }}">Couleur</label>
+        {{ form.color }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.icon.id_for_label }}">Icone</label>
+      {{ form.icon }}
+      <span class="helptext">
+        restaurant, school, family, transport, home, health, leisure, phone,
+        bill, saving, other
+      </span>
+    </div>
+    <button class="btn btn-block">Ajouter la categorie</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 class="card-title">Mes categories</h2>
+  <ul class="list">
+    {% for category in categories %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ category.color }}">
+          {{ category.icon|icon }}
+        </span>
+        <span class="row-main">
+          <span class="t">
+            {{ category.name }}
+            {% if category.is_archived %}<span class="limit-period">· archivee</span>{% endif %}
+          </span>
+          <span class="s">
+            {{ category.expense_count }} depense{{ category.expense_count|pluralize }}
+            {% if category.spent %}· {{ category.spent|money }} {{ currency }}{% endif %}
+          </span>
+        </span>
+        <span class="row-actions">
+          <a class="btn btn-ghost btn-sm" href="{% url 'category_edit' category.pk %}">✏️</a>
+          <form method="post" action="{% url 'category_delete' category.pk %}"
+                onsubmit="return confirm('Supprimer la categorie « {{ category.name }} » ?')">
+            {% csrf_token %}
+            <button class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </span>
+      </li>
+    {% empty %}
+      <div class="empty"><span class="big">🏷️</span>Aucune categorie.</div>
+    {% endfor %}
+  </ul>
+  <p class="table-note">
+    Une categorie deja utilisee par des depenses est archivee plutot que supprimee,
+    afin de preserver votre historique.
+  </p>
+</div>
+{% endblock %}

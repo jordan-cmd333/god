@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Rapports — Budget Control{% endblock %}
+{% block page_title %}Rapports{% endblock %}
+{% block page_subtitle %}
+  Du {{ period.start|date:"d/m/Y" }} au {{ period.end|date:"d/m/Y" }}
+{% endblock %}
+
+{% block content %}
+
+<div class="pill-scroll">
+  <a class="chip {% if kind == 'day' %}is-active{% endif %}" href="?kind=day">Jour</a>
+  <a class="chip {% if kind == 'week' %}is-active{% endif %}" href="?kind=week">Semaine</a>
+  <a class="chip {% if kind == 'month' %}is-active{% endif %}" href="?kind=month">Mois</a>
+  <a class="chip {% if kind == 'year' %}is-active{% endif %}" href="?kind=year">Annee</a>
+</div>
+
+{# ------------------------------------------------------- Resume de periode #}
+<div class="card hero">
+  <div class="label">{{ comparison.label }}</div>
+  <div class="value">{{ report.total|money }}<span class="cur">{{ currency }}</span></div>
+  <div class="delta">
+    {{ report.expense_count }} depense{{ report.expense_count|pluralize }} ·
+    {% if comparison.variation != None %}
+      {% if comparison.improving %}▼{% else %}▲{% endif %}
+      {{ comparison.variation|abs_value|floatformat:1 }} % vs {{ comparison.previous_label|lower }}
+    {% else %}
+      pas de reference sur {{ comparison.previous_label|lower }}
+    {% endif %}
+  </div>
+</div>
+
+{% if top %}
+  <div class="alert alert-info">
+    <span class="ico">🏆</span>
+    <div>
+      Poste de depense principal : <b>{{ top.name }}</b> —
+      {{ top.total|money }} {{ currency }} ({{ top.share|floatformat:0 }} % du total,
+      {{ top.count }} depense{{ top.count|pluralize }}).
+    </div>
+  </div>
+{% endif %}
+
+{# --------------------------------------------------- Depenses par categorie #}
+<div class="card">
+  <h2 class="card-title">Depenses par categorie</h2>
+  <div class="chart-wrap">
+    <canvas data-chart="donut" data-series="{{ chart_categories }}"></canvas>
+  </div>
+  <div class="legend">
+    {% for row in breakdown %}
+      <div class="legend-item">
+        <span class="dot" style="background:{{ row.color }}"></span>
+        <span class="name">{{ row.name }}</span>
+        <span class="val">{{ row.total|money }}</span>
+        <span class="pct">{{ row.share|floatformat:0 }} %</span>
+      </div>
+    {% empty %}
+      <div class="empty">Aucune depense sur cette periode.</div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ------------------------------------------------------ Evolution temporelle #}
+<div class="card">
+  <h2 class="card-title">Evolution dans le temps</h2>
+  <div class="chart-wrap">
+    <canvas data-chart="{% if kind == 'year' %}bars{% else %}line{% endif %}"
+            data-series="{{ chart_timeline }}"></canvas>
+  </div>
+</div>
+
+{# ----------------------------------------------------- Comparaison periodes #}
+<div class="card">
+  <h2 class="card-title">{{ comparison.previous_label }} vs {{ comparison.label }}</h2>
+  <div class="chart-wrap">
+    <canvas data-chart="bars" data-series="{{ chart_compare }}"></canvas>
+  </div>
+  <div class="limit-foot" style="margin-top:10px">
+    <span>Ecart</span>
+    <span class="{% if comparison.improving %}down{% else %}up{% endif %}">
+      {% if comparison.improving %}−{% else %}+{% endif %}
+      {{ comparison.delta|abs_value|money }} {{ currency }}
+    </span>
+  </div>
+</div>
+
+{# -------------------------------------------------- Toutes les comparaisons #}
+<div class="card">
+  <h2 class="card-title">Toutes les periodes</h2>
+  <div class="stat-grid">
+    {% for c in comparisons %}
+      <div class="stat">
+        <div class="k">{{ c.label }}</div>
+        <div class="v">{{ c.current|money }}</div>
+        <div class="d {% if c.improving %}down{% else %}up{% endif %}">
+          {% if c.variation != None %}
+            {% if c.improving %}▼{% else %}▲{% endif %}
+            {{ c.variation|abs_value|floatformat:0 }} %
+            <span class="neutral">vs {{ c.previous|money }}</span>
+          {% else %}
+            <span class="neutral">pas de reference</span>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# --------------------------------------------------------------- Exports #}
+<div class="btn-row">
+  <a class="btn btn-ghost" href="{% url 'export_excel' %}?preset={{ kind }}">📊 Excel</a>
+  <a class="btn btn-ghost" href="{% url 'export_pdf' %}?preset={{ kind }}&kind={{ kind }}">📄 PDF</a>
+</div>
+{% endblock %}

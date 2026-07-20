@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} une depense{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier la depense{% else %}Nouvelle depense{% endif %}{% endblock %}
+{% block page_subtitle %}Montant + categorie suffisent{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  {# ------------------------------------------------------------- Montant #}
+  <div class="card">
+    <label for="{{ form.amount.id_for_label }}">Montant ({{ currency }})</label>
+    {{ form.amount }}
+    {{ form.amount.errors }}
+    <div class="chips" style="justify-content:center;margin-top:12px">
+      <button type="button" class="chip" data-add="500">+500</button>
+      <button type="button" class="chip" data-add="1000">+1 000</button>
+      <button type="button" class="chip" data-add="5000">+5 000</button>
+      <button type="button" class="chip" data-clear="1">C</button>
+    </div>
+  </div>
+
+  {# ----------------------------------------------------------- Categorie #}
+  <div class="card">
+    <span class="form-label">Categorie</span>
+    <div class="chips">
+      {% for category in form.fields.category.queryset %}
+        <label class="chip">
+          <input type="radio" name="category" value="{{ category.pk }}"
+                 {% if form.category.value|stringformat:"s" == category.pk|stringformat:"s" %}checked{% endif %}
+                 {% if forloop.first and not form.category.value %}checked{% endif %}>
+          {{ category.icon|icon }} {{ category.name }}
+        </label>
+      {% empty %}
+        <p class="helptext">
+          Aucune categorie. <a href="{% url 'category_list' %}">Creez-en une</a>.
+        </p>
+      {% endfor %}
+    </div>
+    {{ form.category.errors }}
+  </div>
+
+  {# ------------------------------------------------------ Date, paiement #}
+  <div class="card">
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.date.id_for_label }}">Date</label>
+        {{ form.date }}
+        {{ form.date.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.payment_method.id_for_label }}">Mode de paiement</label>
+        {{ form.payment_method }}
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="{{ form.description.id_for_label }}">Description</label>
+      {{ form.description }}
+    </div>
+
+    <div class="field" style="margin-bottom:0">
+      <label for="{{ form.note.id_for_label }}">Note</label>
+      {{ form.note }}
+    </div>
+  </div>
+
+  {% if is_edit %}
+    <div class="btn-row">
+      <button type="submit" class="btn">Enregistrer</button>
+      <a href="{% url 'history' %}" class="btn btn-ghost">Annuler</a>
+    </div>
+  {% else %}
+    <button type="submit" class="btn btn-block" style="margin-bottom:10px">
+      Enregistrer la depense
+    </button>
+    <button type="submit" name="save_and_new" value="1" class="btn btn-ghost btn-block">
+      Enregistrer et en ajouter une autre
+    </button>
+  {% endif %}
+</form>
+
+{% if is_edit %}
+  <form method="post" action="{% url 'expense_delete' expense.pk %}" style="margin-top:16px"
+        onsubmit="return confirm('Supprimer definitivement cette depense ?')">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block">Supprimer cette depense</button>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Saisie eclair : les puces incrementent le montant sans passer par le clavier.
+  (function () {
+    var input = document.querySelector('.amount-input');
+    if (!input) return;
+
+    // L'attribut autofocus n'est pas honore apres un retour arriere : on force
+    // le curseur sur le montant, seul champ vraiment obligatoire.
+    if (!input.value) input.focus();
+    document.querySelectorAll('[data-add]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var current = parseFloat(input.value) || 0;
+        input.value = current + parseFloat(btn.getAttribute('data-add'));
+      });
+    });
+    document.querySelectorAll('[data-clear]').forEach(function (btn) {
+      btn.addEventListener('click', function () { input.value = ''; input.focus(); });
+    });
+  })();
+</script>
+{% endblock %}

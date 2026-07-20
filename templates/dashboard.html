@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Tableau de bord — Budget Control{% endblock %}
+{% block page_title %}Bonjour, {{ user.username }}{% endblock %}
+{% block page_subtitle %}Voici ou vous en etes aujourd'hui{% endblock %}
+
+{% block content %}
+
+{# ---------------------------------------------------- Alertes en cours #}
+{% for alert in unread_alerts %}
+  <div class="alert {% if alert.level == 'exceeded' %}alert-exceeded{% else %}alert-warning{% endif %}">
+    <span class="ico">{% if alert.level == 'exceeded' %}⛔{% else %}⚠️{% endif %}</span>
+    <div>
+      <b>{{ alert.get_level_display }}</b> —
+      limite {{ alert.limit.get_period_display|lower }} sur
+      {% if alert.limit.category %}{{ alert.limit.category.name }}{% else %}toutes categories{% endif %} :
+      {{ alert.spent|money }} / {{ alert.limit_amount|money }} {{ currency }}
+      ({{ alert.ratio|floatformat:0 }} %).
+    </div>
+  </div>
+{% endfor %}
+{% if unread_alerts %}
+  <form method="post" action="{% url 'alerts_read' %}" style="margin-bottom:14px">
+    {% csrf_token %}
+    <button class="btn btn-ghost btn-sm">Marquer les alertes comme lues</button>
+  </form>
+{% endif %}
+
+{# --------------------------------------------------------- KPI du jour #}
+<div class="card hero">
+  <div class="label">Depenses d'aujourd'hui</div>
+  <div class="value">{{ summaries.day.current|money }}<span class="cur">{{ currency }}</span></div>
+  <div class="delta">
+    {% if summaries.day.variation != None %}
+      {% if summaries.day.improving %}▼{% else %}▲{% endif %}
+      {{ summaries.day.variation|abs_value|floatformat:0 }} % par rapport a hier
+      ({{ summaries.day.previous|money }} {{ currency }})
+    {% else %}
+      Aucune depense hier — pas de comparaison possible
+    {% endif %}
+  </div>
+
+  <div class="hero-grid">
+    <div>
+      <div class="k">Semaine</div>
+      <div class="v">{{ summaries.week.current|money }}</div>
+    </div>
+    <div>
+      <div class="k">Mois</div>
+      <div class="v">{{ summaries.month.current|money }}</div>
+    </div>
+    <div>
+      <div class="k">Annee</div>
+      <div class="v">{{ summaries.year.current|money }}</div>
+    </div>
+  </div>
+</div>
+
+{# ------------------------------------------------------ Ajout ultra-rapide #}
+<a href="{% url 'expense_create' %}" class="btn btn-block" style="margin-bottom:16px">
+  ＋ Ajouter une depense
+</a>
+
+{# -------------------------------------------------- Limites budgetaires #}
+<div class="card">
+  <h2 class="card-title">
+    Limites budgetaires
+    <a href="{% url 'budget_list' %}">Gerer</a>
+  </h2>
+
+  {% for status in limit_statuses %}
+    <div class="limit">
+      <div class="limit-head">
+        <span class="limit-name">
+          <span class="dot" style="background:{{ status.color }}"></span>
+          {{ status.target }}
+          <span class="limit-period">· {{ status.limit.get_period_display|lower }}</span>
+        </span>
+        <span class="limit-amounts">
+          <b>{{ status.spent|money }}</b> / {{ status.amount|money }}
+        </span>
+      </div>
+      <div class="bar {% if status.is_exceeded %}is-exceeded{% elif status.is_warning %}is-warning{% endif %}">
+        <span style="width:{{ status.bar_percent|floatformat:0 }}%"></span>
+      </div>
+      <div class="limit-foot">
+        <span>{{ status.percent|floatformat:0 }} % utilise</span>
+        <span>
+          {% if status.is_exceeded %}
+            <b style="color:var(--danger)">Depassement de {{ status.remaining|abs_value|money }} {{ currency }}</b>
+          {% else %}
+            Reste {{ status.remaining|money }} {{ currency }}
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  {% empty %}
+    <div class="empty">
+      <span class="big">🎯</span>
+      Aucune limite definie.<br>
+      <a href="{% url 'budget_list' %}">Definir un budget</a> pour suivre votre progression.
+    </div>
+  {% endfor %}
+</div>
+
+{# --------------------------------------------------- Repartition du mois #}
+<div class="card">
+  <h2 class="card-title">
+    Repartition du mois
+    <a href="{% url 'reports' %}">Details</a>
+  </h2>
+
+  <div class="chart-wrap">
+    <canvas data-chart="donut" data-series="{{ chart_categories }}"></canvas>
+  </div>
+
+  <div class="legend">
+    {% for row in month_breakdown|slice:":6" %}
+      <div class="legend-item">
+        <span class="dot" style="background:{{ row.color }}"></span>
+        <span class="name">{{ row.name }}</span>
+        <span class="val">{{ row.total|money }}</span>
+        <span class="pct">{{ row.share|floatformat:0 }} %</span>
+      </div>
+    {% empty %}
+      <div class="empty">Aucune depense ce mois-ci.</div>
+    {% endfor %}
+  </div>
+
+  {% if top_category %}
+    <div class="alert alert-info" style="margin:14px 0 0">
+      <span class="ico">💡</span>
+      <div>
+        Vous depensez le plus en <b>{{ top_category.name }}</b> :
+        {{ top_category.total|money }} {{ currency }} ce mois-ci
+        ({{ top_category.share|floatformat:0 }} % du total).
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{# -------------------------------------------------------- Evolution #}
+<div class="card">
+  <h2 class="card-title">Evolution du mois</h2>
+  <div class="chart-wrap">
+    <canvas data-chart="line" data-series="{{ chart_timeline }}"></canvas>
+  </div>
+</div>
+
+{# ------------------------------------------------ Comparaison periodes #}
+<div class="card">
+  <h2 class="card-title">Comparaison avec la periode precedente</h2>
+  <div class="stat-grid">
+    {% for c in comparisons %}
+      <div class="stat">
+        <div class="k">{{ c.label }}</div>
+        <div class="v">{{ c.current|money }}</div>
+        <div class="d {% if c.improving %}down{% else %}up{% endif %}">
+          {% if c.variation != None %}
+            {% if c.improving %}▼{% else %}▲{% endif %}
+            {{ c.variation|abs_value|floatformat:0 }} %
+            <span class="neutral">vs {{ c.previous|money }}</span>
+          {% else %}
+            <span class="neutral">pas de reference</span>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# --------------------------------------------------- Dernieres depenses #}
+<div class="card">
+  <h2 class="card-title">
+    Dernieres depenses
+    <a href="{% url 'history' %}">Tout voir</a>
+  </h2>
+  <ul class="list">
+    {% for expense in recent %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ expense.category.color }}">
+          {{ expense.category.icon|icon }}
+        </span>
+        <span class="row-main">
+          <span class="t">{{ expense.description|default:expense.category.name }}</span>
+          <span class="s">{{ expense.date|date:"d/m/Y" }} · {{ expense.get_payment_method_display }}</span>
+        </span>
+        <span class="row-amount">{{ expense.amount|money }}</span>
+      </li>
+    {% empty %}
+      <div class="empty">
+        <span class="big">🧾</span>
+        Aucune depense enregistree.<br>
+        <a href="{% url 'expense_create' %}">Ajouter la premiere</a>
+      </div>
+    {% endfor %}
+  </ul>
+</div>
+
+{% endblock %}

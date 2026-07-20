@@ -1,0 +1,64 @@
+{% load static %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <title>{% block title %}Budget Control{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+</head>
+<body>
+
+{% block header %}
+<header class="app-header">
+  <h1>
+    {% block page_title %}Budget Control{% endblock %}
+    <span class="sub">{% block page_subtitle %}{% endblock %}</span>
+  </h1>
+  <div class="header-actions">
+    <a class="icon-btn" href="{% url 'reports' %}" title="Rapports">📊</a>
+    <a class="icon-btn" href="{% url 'settings' %}" title="Parametres">
+      ⚙️{% if unread_count %}<span class="badge-dot">{{ unread_count }}</span>{% endif %}
+    </a>
+  </div>
+</header>
+{% endblock %}
+
+<main>
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }}">
+        <span class="ico">{% if message.tags == 'error' %}⛔{% elif message.tags == 'warning' %}⚠️{% else %}✅{% endif %}</span>
+        <div>{{ message }}</div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+
+{% block nav %}
+<nav class="tabbar">
+  <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+    <span class="ico">🏠</span> Accueil
+  </a>
+  <a href="{% url 'history' %}" class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">
+    <span class="ico">📜</span> Historique
+  </a>
+  <span class="fab-slot">
+    <a href="{% url 'expense_create' %}" class="fab" title="Ajouter une depense">+</a>
+  </span>
+  <a href="{% url 'budget_list' %}" class="{% if request.resolver_match.url_name == 'budget_list' %}active{% endif %}">
+    <span class="ico">🎯</span> Budgets
+  </a>
+  <a href="{% url 'category_list' %}" class="{% if request.resolver_match.url_name == 'category_list' %}active{% endif %}">
+    <span class="ico">🏷️</span> Categories
+  </a>
+</nav>
+{% endblock %}
+
+<script src="{% static 'js/charts.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
