@@ -148,6 +148,52 @@ class AlertTests(BaseCase):
         self.assertEqual(status['remaining'], Decimal('-20000'))
 
 
+class BudgetLimitViewTests(BaseCase):
+    """La page Budgets ne doit jamais creer de limite invisible."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+
+    def _creer(self, **extra):
+        donnees = {'period': 'week', 'amount': '20000', 'category': ''}
+        donnees.update(extra)
+        return self.client.post(reverse('budget_list'), donnees)
+
+    def test_une_limite_creee_est_active_et_visible(self):
+        self._creer(is_active='on')
+        limite = BudgetLimit.objects.get(user=self.user, period='week')
+        self.assertTrue(limite.is_active)
+        cibles = [s['limit'] for s in services.all_limit_statuses(self.user)]
+        self.assertIn(limite, cibles)
+
+    def test_une_limite_desactivee_reste_visible_sur_la_page_budgets(self):
+        # Sans cette regle, la limite serait invisible tout en bloquant la
+        # creation d'une limite identique.
+        self._creer()  # case « active » decochee
+        limite = BudgetLimit.objects.get(user=self.user, period='week')
+        self.assertFalse(limite.is_active)
+        response = self.client.get(reverse('budget_list'))
+        self.assertContains(response, 'desactivee')
+        self.assertIn(limite, [s['limit'] for s in response.context['statuses']])
+
+    def test_le_tableau_de_bord_ignore_les_limites_desactivees(self):
+        self._creer()
+        statuts = services.all_limit_statuses(self.user)
+        self.assertEqual(statuts, [])
+
+    def test_le_doublon_signale_une_limite_desactivee(self):
+        self._creer()
+        response = self._creer(amount='999')
+        self.assertContains(response, 'desactivee existe deja')
+        self.assertEqual(BudgetLimit.objects.filter(user=self.user).count(), 1)
+
+    def test_la_case_active_est_precochee_dans_le_formulaire(self):
+        response = self.client.get(reverse('budget_list'))
+        self.assertContains(response, 'name="is_active"')
+        self.assertContains(response, 'checked')
+
+
 class ReportTests(BaseCase):
     def test_le_rapport_est_genere_selon_la_date_des_depenses(self):
         self.spend('2000', category=self.food)

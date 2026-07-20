@@ -217,11 +217,16 @@ def limit_status(user, limit: BudgetLimit, ref: date | None = None):
     }
 
 
-def all_limit_statuses(user, ref: date | None = None):
-    limits = (
-        BudgetLimit.objects.filter(user=user, is_active=True)
-        .select_related('category')
-    )
+def all_limit_statuses(user, ref: date | None = None, include_inactive=False):
+    """Etat de chaque limite.
+
+    Le tableau de bord ne montre que les limites actives ; la page Budgets les
+    montre toutes, sans quoi une limite desactivee serait invisible tout en
+    bloquant la creation d'une limite identique.
+    """
+    limits = BudgetLimit.objects.filter(user=user).select_related('category')
+    if not include_inactive:
+        limits = limits.filter(is_active=True)
     order = {'day': 0, 'week': 1, 'month': 2, 'year': 3}
     return sorted(
         (limit_status(user, limit, ref) for limit in limits),

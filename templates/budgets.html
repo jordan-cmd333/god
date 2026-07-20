@@ -29,6 +29,9 @@
         Laissez « Toutes categories » pour plafonner l'ensemble de vos depenses.
       </span>
     </div>
+    <label class="chip" style="margin-bottom:13px">
+      {{ form.is_active }} Limite active
+    </label>
     <button class="btn btn-block">Definir la limite</button>
   </form>
 </div>
@@ -39,11 +42,14 @@
   <div class="card">
     <h2 class="card-title">Limite {{ group.grouper|lower }}</h2>
     {% for status in group.list %}
-      <div class="limit">
+      <div class="limit" {% if not status.limit.is_active %}style="opacity:.55"{% endif %}>
         <div class="limit-head">
           <span class="limit-name">
             <span class="dot" style="background:{{ status.color }}"></span>
             {{ status.target }}
+            {% if not status.limit.is_active %}
+              <span class="limit-period">· desactivee</span>
+            {% endif %}
           </span>
           <span class="limit-amounts">
             <b>{{ status.spent|money }}</b> / {{ status.amount|money }}
@@ -69,12 +75,12 @@
           </span>
         </div>
 
-        {% if status.is_exceeded %}
+        {% if status.limit.is_active and status.is_exceeded %}
           <div class="alert alert-exceeded" style="margin:10px 0 0">
             <span class="ico">⛔</span>
             <div>Limite depassee de {{ status.remaining|abs_value|money }} {{ currency }}.</div>
           </div>
-        {% elif status.is_warning %}
+        {% elif status.limit.is_active and status.is_warning %}
           <div class="alert alert-warning" style="margin:10px 0 0">
             <span class="ico">⚠️</span>
             <div>

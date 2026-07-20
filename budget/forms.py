@@ -109,9 +109,16 @@ class BudgetLimitForm(forms.ModelForm):
         )
         if self.instance.pk:
             qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
+        existante = qs.first()
+        if existante is not None:
+            if existante.is_active:
+                raise forms.ValidationError(
+                    'Une limite existe deja pour cette periode et cette categorie. '
+                    'Modifiez-la plutot que d’en creer une seconde.'
+                )
             raise forms.ValidationError(
-                'Une limite existe deja pour cette periode et cette categorie.'
+                'Une limite desactivee existe deja pour cette periode et cette '
+                'categorie. Elle est listee ci-dessous : reactivez-la ou modifiez-la.'
             )
         return data
 

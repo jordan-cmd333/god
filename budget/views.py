@@ -238,7 +238,7 @@ def budget_list(request):
         return redirect('budget_list')
     return render(request, 'budgets.html', {
         'form': form,
-        'statuses': services.all_limit_statuses(request.user),
+        'statuses': services.all_limit_statuses(request.user, include_inactive=True),
     })
 
 
