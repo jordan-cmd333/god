@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Sources de revenus — Budget Control{% endblock %}
+{% block page_title %}Sources de revenus{% endblock %}
+{% block page_subtitle %}D'ou peut venir votre argent{% endblock %}
+
+{% block content %}
+
+<div class="card">
+  <h2 class="card-title">Nouvelle source</h2>
+  <form method="post" action="{% url 'source_create' %}">
+    {% csrf_token %}
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.name.id_for_label }}">Nom</label>
+        {{ form.name }}
+      </div>
+      <div class="field">
+        <label for="{{ form.color.id_for_label }}">Couleur</label>
+        {{ form.color }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.icon.id_for_label }}">Icone</label>
+      {{ form.icon }}
+      <span class="helptext">
+        salary, freelance, business, scholarship, family, rent, sale, interest,
+        gift, other
+      </span>
+    </div>
+    <button class="btn btn-income btn-block">Ajouter la source</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 class="card-title">Mes sources</h2>
+  <ul class="list">
+    {% for source in sources %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ source.color }}">
+          {{ source.icon|icon }}
+        </span>
+        <span class="row-main">
+          <span class="t">
+            {{ source.name }}
+            {% if source.is_archived %}<span class="limit-period">· archivee</span>{% endif %}
+          </span>
+          <span class="s">
+            {{ source.income_count }} revenu{{ source.income_count|pluralize }}
+            {% if source.earned %}· {{ source.earned|money }} {{ currency }}{% endif %}
+          </span>
+        </span>
+        <span class="row-actions">
+          <a class="btn btn-ghost btn-sm" href="{% url 'source_edit' source.pk %}">✏️</a>
+          <form method="post" action="{% url 'source_delete' source.pk %}"
+                onsubmit="return confirm('Supprimer la source « {{ source.name }} » ?')">
+            {% csrf_token %}
+            <button class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </span>
+      </li>
+    {% empty %}
+      <div class="empty"><span class="big">💵</span>Aucune source.</div>
+    {% endfor %}
+  </ul>
+  <p class="table-note">
+    Une source deja utilisee par des revenus est archivee plutot que supprimee,
+    afin de preserver votre historique.
+  </p>
+</div>
+{% endblock %}

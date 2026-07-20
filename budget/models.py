@@ -119,6 +119,103 @@ class Expense(models.Model):
         return f'{self.amount} - {self.category} ({self.date})'
 
 
+class IncomeSource(models.Model):
+    """Source de revenu, personnalisable — pendant de Category cote entrees."""
+
+    DEFAULTS = [
+        ('Salaire', '#0f766e', 'salary'),
+        ('Freelance', '#6366f1', 'freelance'),
+        ('Commerce', '#f97316', 'business'),
+        ('Bourse', '#3b82f6', 'scholarship'),
+        ('Aide familiale', '#ec4899', 'family'),
+        ('Location', '#14b8a6', 'rent'),
+        ('Vente', '#eab308', 'sale'),
+        ('Interets', '#22c55e', 'interest'),
+        ('Cadeau', '#a855f7', 'gift'),
+        ('Autres', '#64748b', 'other'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sources'
+    )
+    name = models.CharField('nom', max_length=60)
+    color = models.CharField('couleur', max_length=7, default='#0f766e')
+    icon = models.CharField('icone', max_length=20, default='other')
+    is_archived = models.BooleanField('archivee', default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'source de revenu'
+        verbose_name_plural = 'sources de revenus'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'name'], name='unique_source_name_per_user'
+            )
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def create_defaults(cls, user):
+        cls.objects.bulk_create(
+            [
+                cls(user=user, name=name, color=color, icon=icon)
+                for name, color, icon in cls.DEFAULTS
+            ],
+            ignore_conflicts=True,
+        )
+
+
+class Income(models.Model):
+    """Une rentree d'argent. Toujours rattachee a une source."""
+
+    class Method(models.TextChoices):
+        CASH = 'cash', 'Especes'
+        MOBILE = 'mobile', 'Mobile money'
+        TRANSFER = 'transfer', 'Virement'
+        CARD = 'card', 'Carte bancaire'
+        CHECK = 'check', 'Cheque'
+        OTHER = 'other', 'Autre'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='incomes'
+    )
+    source = models.ForeignKey(
+        IncomeSource, on_delete=models.PROTECT, related_name='incomes',
+        verbose_name='source',
+    )
+    amount = models.DecimalField(
+        'montant', max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    description = models.CharField('description', max_length=140, blank=True)
+    date = models.DateField('date', default=timezone.localdate)
+    method = models.CharField(
+        'mode de reception', max_length=10,
+        choices=Method.choices, default=Method.CASH,
+    )
+    is_recurring = models.BooleanField(
+        'revenu recurrent', default=False,
+        help_text='A cocher pour un revenu qui revient chaque periode (salaire, loyer...).',
+    )
+    note = models.TextField('note', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'revenu'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['user', '-date']),
+            models.Index(fields=['user', 'source', '-date']),
+        ]
+
+    def __str__(self):
+        return f'{self.amount} - {self.source} ({self.date})'
+
+
 class BudgetLimit(models.Model):
     """Limite budgetaire, globale ou ciblee sur une categorie."""
 

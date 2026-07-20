@@ -8,7 +8,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from . import services
-from .models import Alert, BudgetLimit, Category, Expense, Report
+from .models import (
+    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Report,
+)
 
 
 class BaseCase(TestCase):
@@ -146,6 +148,153 @@ class AlertTests(BaseCase):
         self.assertEqual(status['bar_percent'], 100)
         self.assertEqual(status['percent'], 300)
         self.assertEqual(status['remaining'], Decimal('-20000'))
+
+
+class IncomeTests(BaseCase):
+    """Les revenus suivent le meme concept que les depenses."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+        self.salaire = IncomeSource.objects.get(user=self.user, name='Salaire')
+        self.vente = IncomeSource.objects.get(user=self.user, name='Vente')
+
+    def earn(self, amount, when=None, source=None):
+        return Income.objects.create(
+            user=self.user, source=source or self.salaire,
+            amount=Decimal(amount), date=when or self.today,
+        )
+
+    def test_les_sources_par_defaut_sont_creees(self):
+        self.assertEqual(IncomeSource.objects.filter(user=self.user).count(), 10)
+
+    def test_les_revenus_sont_additionnes_par_periode(self):
+        self.earn('180000')
+        self.earn('20000')
+        self.earn('99999', when=self.today - timedelta(days=40))
+        month = services.period_bounds('month', self.today)
+        self.assertEqual(services.income_total(self.user, month), Decimal('200000'))
+
+    def test_source_principale(self):
+        self.earn('50000', source=self.salaire)
+        self.earn('150000', source=self.vente)
+        top = services.top_source(self.user, services.period_bounds('month', self.today))
+        self.assertEqual(top['name'], 'Vente')
+        self.assertAlmostEqual(top['share'], 75.0)
+
+    def test_solde_positif(self):
+        self.earn('200000')
+        self.spend('50000')
+        solde = services.balance(self.user, services.period_bounds('month', self.today))
+        self.assertEqual(solde['balance'], Decimal('150000'))
+        self.assertTrue(solde['is_positive'])
+        self.assertAlmostEqual(solde['spent_ratio'], 25.0)
+
+    def test_solde_negatif(self):
+        self.earn('30000')
+        self.spend('45000')
+        solde = services.balance(self.user, services.period_bounds('month', self.today))
+        self.assertEqual(solde['balance'], Decimal('-15000'))
+        self.assertFalse(solde['is_positive'])
+
+    def test_solde_sans_revenu_ne_calcule_pas_de_ratio(self):
+        self.spend('5000')
+        solde = services.balance(self.user, services.period_bounds('month', self.today))
+        self.assertIsNone(solde['spent_ratio'])
+        self.assertEqual(solde['balance'], Decimal('-5000'))
+
+    def test_gagner_plus_est_une_amelioration(self):
+        # A l'inverse des depenses : pour un revenu, monter est bon signe.
+        self.earn('100000', when=self.today - timedelta(days=1))
+        self.earn('150000', when=self.today)
+        result = services.compare(self.user, 'day', self.today, model=Income)
+        self.assertTrue(result['improving'])
+        self.assertAlmostEqual(result['variation'], 50.0)
+
+    def test_un_flux_recurrent_n_apparait_qu_une_fois(self):
+        # Trois mois de salaire = un seul flux, pas trois lignes identiques.
+        for mois in range(3):
+            Income.objects.create(
+                user=self.user, source=self.salaire, amount=Decimal('185000'),
+                description='Salaire mensuel', is_recurring=True,
+                date=self.today - timedelta(days=30 * mois),
+            )
+        flux = services.recurring_streams(self.user)
+        self.assertEqual(len(flux), 1)
+        self.assertEqual(flux[0].date, self.today)  # la plus recente
+
+    def test_le_gabarit_du_solde_ne_laisse_pas_fuir_de_commentaire(self):
+        self.earn('1000')
+        response = self.client.get(reverse('income_dashboard'))
+        self.assertNotContains(response, 'Partage entre l')
+
+    def test_ajout_de_revenu(self):
+        response = self.client.post(reverse('income_create'), {
+            'amount': '185000',
+            'source': self.salaire.pk,
+            'date': self.today.isoformat(),
+            'method': 'transfer',
+            'description': 'Salaire de juillet',
+            'note': '',
+        })
+        self.assertRedirects(response, reverse('income_dashboard'))
+        self.assertEqual(Income.objects.count(), 1)
+
+    def test_filtre_par_source(self):
+        self.earn('10000', source=self.salaire)
+        self.earn('20000', source=self.vente)
+        response = self.client.get(reverse('income_history'), {'source': self.vente.pk})
+        self.assertEqual(response.context['count'], 1)
+        self.assertEqual(response.context['total'], Decimal('20000'))
+
+    def test_la_source_utilisee_est_archivee_et_non_supprimee(self):
+        self.earn('10000', source=self.salaire)
+        self.client.post(reverse('source_delete', args=[self.salaire.pk]))
+        self.salaire.refresh_from_db()
+        self.assertTrue(self.salaire.is_archived)
+        self.assertEqual(Income.objects.count(), 1)
+
+    def test_les_revenus_sont_isoles_par_utilisateur(self):
+        autre = User.objects.create_user('bob', password='motdepasse-123')
+        Income.objects.create(
+            user=autre, source=IncomeSource.objects.get(user=autre, name='Salaire'),
+            amount=Decimal('777777'), date=self.today,
+        )
+        response = self.client.get(reverse('income_history'))
+        self.assertNotContains(response, '777 777')
+        self.assertEqual(response.context['count'], 0)
+
+    def test_le_tableau_de_bord_affiche_le_solde(self):
+        self.earn('100000')
+        self.spend('40000')
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.context['balance']['balance'], Decimal('60000'))
+
+    def test_les_pages_revenus_repondent(self):
+        self.earn('50000')
+        for name in ['income_dashboard', 'income_create', 'income_history',
+                     'source_list']:
+            self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
+
+    def test_les_pages_revenus_exigent_une_connexion(self):
+        self.client.logout()
+        for name in ['income_dashboard', 'income_create', 'income_history',
+                     'source_list']:
+            response = self.client.get(reverse(name))
+            self.assertEqual(response.status_code, 302, name)
+            self.assertIn('/connexion/', response['Location'], name)
+
+    def test_les_revenus_figurent_dans_l_export_excel(self):
+        self.earn('123456')
+        response = self.client.get(reverse('export_excel'))
+        self.assertEqual(response.status_code, 200)
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+        wb = load_workbook(BytesIO(response.content))
+        self.assertIn('Revenus', wb.sheetnames)
+        valeurs = [c.value for row in wb['Revenus'].iter_rows() for c in row]
+        self.assertIn(123456, valeurs)
 
 
 class BudgetLimitViewTests(BaseCase):

@@ -20,6 +20,19 @@ urlpatterns = [
     path('depenses/<int:pk>/supprimer/', views.expense_delete, name='expense_delete'),
     path('historique/', views.history, name='history'),
 
+    # Revenus
+    path('revenus/', views.income_dashboard, name='income_dashboard'),
+    path('revenus/ajouter/', views.income_create, name='income_create'),
+    path('revenus/<int:pk>/modifier/', views.income_edit, name='income_edit'),
+    path('revenus/<int:pk>/supprimer/', views.income_delete, name='income_delete'),
+    path('revenus/historique/', views.income_history, name='income_history'),
+
+    # Sources de revenus
+    path('revenus/sources/', views.source_list, name='source_list'),
+    path('revenus/sources/ajouter/', views.source_create, name='source_create'),
+    path('revenus/sources/<int:pk>/modifier/', views.source_edit, name='source_edit'),
+    path('revenus/sources/<int:pk>/supprimer/', views.source_delete, name='source_delete'),
+
     # Categories
     path('categories/', views.category_list, name='category_list'),
     path('categories/ajouter/', views.category_create, name='category_create'),

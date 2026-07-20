@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from budget.models import BudgetLimit, Category, Expense
+from budget.models import BudgetLimit, Category, Expense, Income, IncomeSource
 from budget import services
 
 PROFILS = {
@@ -58,6 +58,33 @@ class Command(BaseCommand):
                 ))
         Expense.objects.bulk_create(depenses)
 
+        # Revenus : un salaire mensuel regulier, plus des rentrees ponctuelles.
+        Income.objects.filter(user=user).delete()
+        sources = {s.name: s for s in IncomeSource.objects.filter(user=user)}
+        revenus = []
+        for mois in range(3):
+            jour = today.replace(day=1) - timedelta(days=31 * mois)
+            revenus.append(Income(
+                user=user, source=sources['Salaire'], amount=Decimal('185000'),
+                description='Salaire mensuel', date=jour.replace(day=3),
+                method='transfer', is_recurring=True,
+            ))
+            revenus.append(Income(
+                user=user, source=sources['Location'], amount=Decimal('45000'),
+                description='Loyer encaisse', date=jour.replace(day=5),
+                method='cash', is_recurring=True,
+            ))
+        for _ in range(9):
+            nom = random.choice(['Freelance', 'Commerce', 'Vente', 'Cadeau', 'Bourse'])
+            revenus.append(Income(
+                user=user, source=sources[nom],
+                amount=Decimal(random.randrange(8000, 90000, 500)),
+                description=f'Rentree {nom.lower()}',
+                date=today - timedelta(days=random.randrange(0, 85)),
+                method=random.choice(['cash', 'mobile', 'transfer']),
+            ))
+        Income.objects.bulk_create(revenus)
+
         BudgetLimit.objects.filter(user=user).delete()
         for period, amount in [('day', 8000), ('week', 45000), ('month', 180000),
                                ('year', 2000000)]:
@@ -75,6 +102,6 @@ class Command(BaseCommand):
         services.refresh_reports(user)
 
         self.stdout.write(self.style.SUCCESS(
-            f'Compte demo pret : {len(depenses)} depenses sur 90 jours. '
-            'Identifiants : demo / demo12345'
+            f'Compte demo pret : {len(depenses)} depenses et {len(revenus)} revenus '
+            'sur 90 jours. Identifiants : demo / demo12345'
         ))

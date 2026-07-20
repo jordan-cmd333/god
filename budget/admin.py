@@ -1,6 +1,8 @@
 from django.contrib import admin
 
-from .models import Alert, BudgetLimit, Category, Expense, Profile, Report
+from .models import (
+    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile, Report,
+)
 
 
 @admin.register(Category)
@@ -14,6 +16,21 @@ class CategoryAdmin(admin.ModelAdmin):
 class ExpenseAdmin(admin.ModelAdmin):
     list_display = ['date', 'user', 'category', 'amount', 'payment_method']
     list_filter = ['payment_method', 'date', 'category']
+    search_fields = ['description', 'note', 'user__username']
+    date_hierarchy = 'date'
+
+
+@admin.register(IncomeSource)
+class IncomeSourceAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'color', 'is_archived']
+    list_filter = ['is_archived']
+    search_fields = ['name', 'user__username']
+
+
+@admin.register(Income)
+class IncomeAdmin(admin.ModelAdmin):
+    list_display = ['date', 'user', 'source', 'amount', 'method', 'is_recurring']
+    list_filter = ['method', 'is_recurring', 'date', 'source']
     search_fields = ['description', 'note', 'user__username']
     date_hierarchy = 'date'
 

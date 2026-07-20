@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}{% if is_edit %}Modifier{% else %}Ajouter{% endif %} un revenu{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier le revenu{% else %}Nouveau revenu{% endif %}{% endblock %}
+{% block page_subtitle %}Montant + source suffisent{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  <div class="card">
+    <label for="{{ form.amount.id_for_label }}">Montant ({{ currency }})</label>
+    {{ form.amount }}
+    {{ form.amount.errors }}
+    <div class="chips" style="justify-content:center;margin-top:12px">
+      <button type="button" class="chip" data-add="5000">+5 000</button>
+      <button type="button" class="chip" data-add="25000">+25 000</button>
+      <button type="button" class="chip" data-add="100000">+100 000</button>
+      <button type="button" class="chip" data-clear="1">C</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="form-label">Source</span>
+    <div class="chips">
+      {% for source in form.fields.source.queryset %}
+        <label class="chip">
+          <input type="radio" name="source" value="{{ source.pk }}"
+                 {% if form.source.value|stringformat:"s" == source.pk|stringformat:"s" %}checked{% endif %}
+                 {% if forloop.first and not form.source.value %}checked{% endif %}>
+          {{ source.icon|icon }} {{ source.name }}
+        </label>
+      {% empty %}
+        <p class="helptext">
+          Aucune source. <a href="{% url 'source_list' %}">Creez-en une</a>.
+        </p>
+      {% endfor %}
+    </div>
+    {{ form.source.errors }}
+  </div>
+
+  <div class="card">
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.date.id_for_label }}">Date</label>
+        {{ form.date }}
+        {{ form.date.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.method.id_for_label }}">Mode de reception</label>
+        {{ form.method }}
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="{{ form.description.id_for_label }}">Description</label>
+      {{ form.description }}
+    </div>
+
+    <label class="chip" style="margin-bottom:13px">
+      {{ form.is_recurring }} Revenu recurrent
+    </label>
+
+    <div class="field" style="margin-bottom:0">
+      <label for="{{ form.note.id_for_label }}">Note</label>
+      {{ form.note }}
+    </div>
+  </div>
+
+  {% if is_edit %}
+    <div class="btn-row">
+      <button type="submit" class="btn btn-income">Enregistrer</button>
+      <a href="{% url 'income_history' %}" class="btn btn-ghost">Annuler</a>
+    </div>
+  {% else %}
+    <button type="submit" class="btn btn-income btn-block" style="margin-bottom:10px">
+      Enregistrer le revenu
+    </button>
+    <button type="submit" name="save_and_new" value="1" class="btn btn-ghost btn-block">
+      Enregistrer et en ajouter un autre
+    </button>
+  {% endif %}
+</form>
+
+{% if is_edit %}
+  <form method="post" action="{% url 'income_delete' income.pk %}" style="margin-top:16px"
+        onsubmit="return confirm('Supprimer definitivement ce revenu ?')">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block">Supprimer ce revenu</button>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var input = document.querySelector('.amount-input');
+    if (!input) return;
+    if (!input.value) input.focus();
+    document.querySelectorAll('[data-add]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        input.value = (parseFloat(input.value) || 0) + parseFloat(btn.getAttribute('data-add'));
+      });
+    });
+    document.querySelectorAll('[data-clear]').forEach(function (btn) {
+      btn.addEventListener('click', function () { input.value = ''; input.focus(); });
+    });
+  })();
+</script>
+{% endblock %}

@@ -58,9 +58,19 @@
 </div>
 
 {# ------------------------------------------------------ Ajout ultra-rapide #}
-<a href="{% url 'expense_create' %}" class="btn btn-block" style="margin-bottom:16px">
-  ＋ Ajouter une depense
-</a>
+<div class="btn-row" style="margin-bottom:16px">
+  <a href="{% url 'expense_create' %}" class="btn">＋ Depense</a>
+  <a href="{% url 'income_create' %}" class="btn btn-income">＋ Revenu</a>
+</div>
+
+{# ------------------------------------------------------------------ Solde #}
+<div class="card">
+  <h2 class="card-title">
+    Solde du mois
+    <a href="{% url 'income_dashboard' %}">Detail des revenus</a>
+  </h2>
+  {% include 'partials/balance.html' with balance=balance %}
+</div>
 
 {# -------------------------------------------------- Limites budgetaires #}
 <div class="card">

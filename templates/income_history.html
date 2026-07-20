@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Historique des revenus — Budget Control{% endblock %}
+{% block page_title %}Historique des revenus{% endblock %}
+{% block page_subtitle %}{{ count }} revenu{{ count|pluralize }} filtre{{ count|pluralize }}{% endblock %}
+
+{% block content %}
+
+<div class="pill-scroll">
+  <a class="chip {% if not form.preset.value %}is-active{% endif %}" href="{% url 'income_history' %}">Tout</a>
+  <a class="chip {% if form.preset.value == 'day' %}is-active{% endif %}" href="?preset=day">Aujourd'hui</a>
+  <a class="chip {% if form.preset.value == 'week' %}is-active{% endif %}" href="?preset=week">Cette semaine</a>
+  <a class="chip {% if form.preset.value == 'month' %}is-active{% endif %}" href="?preset=month">Ce mois</a>
+  <a class="chip {% if form.preset.value == 'year' %}is-active{% endif %}" href="?preset=year">Cette annee</a>
+</div>
+
+<div class="summary-bar summary-bar-income">
+  <span>Total filtre</span>
+  <b>{{ total|money }} {{ currency }}</b>
+</div>
+
+<details class="card filters" {% if querystring %}open{% endif %}>
+  <summary>Filtres avances</summary>
+  <form method="get" class="filters-body">
+    <div class="field">
+      <label for="{{ form.preset.id_for_label }}">Periode</label>
+      {{ form.preset }}
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.date_from.id_for_label }}">Du</label>
+        {{ form.date_from }}
+      </div>
+      <div class="field">
+        <label for="{{ form.date_to.id_for_label }}">Au</label>
+        {{ form.date_to }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.source.id_for_label }}">Source</label>
+      {{ form.source }}
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.min_amount.id_for_label }}">Montant min</label>
+        {{ form.min_amount }}
+      </div>
+      <div class="field">
+        <label for="{{ form.max_amount.id_for_label }}">Montant max</label>
+        {{ form.max_amount }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.q.id_for_label }}">Recherche</label>
+      {{ form.q }}
+    </div>
+    <div class="btn-row">
+      <button type="submit" class="btn btn-income">Filtrer</button>
+      <a href="{% url 'income_history' %}" class="btn btn-ghost">Reinitialiser</a>
+    </div>
+  </form>
+</details>
+
+<div class="card">
+  <ul class="list">
+    {% for income in incomes %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ income.source.color }}">
+          {{ income.source.icon|icon }}
+        </span>
+        <span class="row-main">
+          <span class="t">
+            {{ income.description|default:income.source.name }}
+            {% if income.is_recurring %}<span class="limit-period">· recurrent</span>{% endif %}
+          </span>
+          <span class="s">
+            {{ income.date|date:"d/m/Y" }} · {{ income.source.name }}
+            · {{ income.get_method_display }}
+          </span>
+        </span>
+        <span class="row-amount income">+{{ income.amount|money }}</span>
+        <a class="btn btn-ghost btn-sm" href="{% url 'income_edit' income.pk %}">✏️</a>
+      </li>
+    {% empty %}
+      <div class="empty">
+        <span class="big">🔍</span>
+        Aucun revenu ne correspond a ces filtres.
+      </div>
+    {% endfor %}
+  </ul>
+
+  {% if count > 300 %}
+    <p class="table-note">300 revenus affiches sur {{ count }}. Affinez les filtres.</p>
+  {% endif %}
+</div>
+{% endblock %}

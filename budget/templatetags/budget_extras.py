@@ -7,9 +7,13 @@ from django import template
 register = template.Library()
 
 ICONS = {
+    # Categories de depenses
     'restaurant': '🍲', 'school': '🎓', 'family': '👪', 'transport': '🚌',
     'home': '🏠', 'health': '💊', 'leisure': '🎉', 'phone': '📱',
     'bill': '🧾', 'saving': '🐖', 'other': '📦',
+    # Sources de revenus
+    'salary': '💼', 'freelance': '💻', 'business': '🏪', 'scholarship': '🎓',
+    'rent': '🏘️', 'sale': '🏷️', 'interest': '📈', 'gift': '🎁',
 }
 
 

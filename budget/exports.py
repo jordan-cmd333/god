@@ -87,6 +87,36 @@ def expenses_xlsx(user, queryset):
     for i, width in enumerate([24, 16, 12, 10], start=1):
         ws2.column_dimensions[get_column_letter(i)].width = width
 
+    # Feuille des revenus : sans elle, l'export ne dirait rien du solde.
+    ws3 = wb.create_sheet('Revenus')
+    ws3.append(['Date', 'Source', 'Montant', 'Mode de reception', 'Recurrent',
+                'Description'])
+    for col in range(1, 7):
+        cell = ws3.cell(row=1, column=col)
+        cell.fill, cell.font = HEADER_FILL, HEADER_FONT
+    encaisse = Decimal('0')
+    for income in user.incomes.select_related('source').all():
+        encaisse += income.amount
+        ws3.append([
+            income.date, income.source.name, float(income.amount),
+            income.get_method_display(), 'oui' if income.is_recurring else 'non',
+            income.description,
+        ])
+    ws3.append([])
+    ligne = ws3.max_row + 1
+    ws3.cell(row=ligne, column=2, value='TOTAL ENCAISSE').font = Font(bold=True)
+    ws3.cell(row=ligne, column=3, value=float(encaisse)).font = Font(bold=True)
+    # Les depenses de la feuille 1 sont filtrees, pas les revenus : on le dit,
+    # plutot que d'afficher un solde dont le perimetre serait ambigu.
+    ws3.cell(
+        row=ligne + 1, column=2,
+        value='SOLDE (total encaisse - depenses exportees)',
+    ).font = Font(bold=True)
+    ws3.cell(row=ligne + 1, column=3, value=float(encaisse - total)).font = Font(bold=True)
+    ws3.freeze_panes = 'A2'
+    for i, width in enumerate([12, 20, 14, 20, 12, 40], start=1):
+        ws3.column_dimensions[get_column_letter(i)].width = width
+
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)

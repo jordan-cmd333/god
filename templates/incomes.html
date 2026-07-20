@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Revenus — Budget Control{% endblock %}
+{% block page_title %}Revenus{% endblock %}
+{% block page_subtitle %}D'ou vient votre argent{% endblock %}
+
+{% block content %}
+
+{# ------------------------------------------------------- Rentrees du mois #}
+<div class="card hero hero-income">
+  <div class="label">Revenus de ce mois-ci</div>
+  <div class="value">{{ summaries.month.current|money }}<span class="cur">{{ currency }}</span></div>
+  <div class="delta">
+    {% if summaries.month.variation != None %}
+      {% if summaries.month.improving %}▲{% else %}▼{% endif %}
+      {{ summaries.month.variation|abs_value|floatformat:0 }} % par rapport au mois dernier
+      ({{ summaries.month.previous|money }} {{ currency }})
+    {% else %}
+      Aucun revenu le mois dernier — pas de comparaison possible
+    {% endif %}
+  </div>
+
+  <div class="hero-grid">
+    <div>
+      <div class="k">Aujourd'hui</div>
+      <div class="v">{{ summaries.day.current|money }}</div>
+    </div>
+    <div>
+      <div class="k">Semaine</div>
+      <div class="v">{{ summaries.week.current|money }}</div>
+    </div>
+    <div>
+      <div class="k">Annee</div>
+      <div class="v">{{ summaries.year.current|money }}</div>
+    </div>
+  </div>
+</div>
+
+<a href="{% url 'income_create' %}" class="btn btn-block btn-income" style="margin-bottom:16px">
+  ＋ Ajouter un revenu
+</a>
+
+{# ------------------------------------------------------------------ Solde #}
+<div class="card">
+  <h2 class="card-title">Solde du mois</h2>
+  {% include 'partials/balance.html' with balance=balance %}
+</div>
+
+{# --------------------------------------------------- Sources de revenus #}
+<div class="card">
+  <h2 class="card-title">
+    Sources de revenus
+    <a href="{% url 'source_list' %}">Gerer</a>
+  </h2>
+
+  <div class="chart-wrap">
+    <canvas data-chart="donut" data-series="{{ chart_sources }}"></canvas>
+  </div>
+
+  <div class="legend">
+    {% for row in month_breakdown %}
+      <div class="legend-item">
+        <span class="dot" style="background:{{ row.color }}"></span>
+        <span class="name">{{ row.name }}</span>
+        <span class="val">{{ row.total|money }}</span>
+        <span class="pct">{{ row.share|floatformat:0 }} %</span>
+      </div>
+    {% empty %}
+      <div class="empty">
+        <span class="big">💵</span>
+        Aucun revenu ce mois-ci.<br>
+        <a href="{% url 'income_create' %}">Enregistrer une rentree d'argent</a>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if top_source %}
+    <div class="alert alert-success" style="margin:14px 0 0">
+      <span class="ico">🏆</span>
+      <div>
+        Votre principale source est <b>{{ top_source.name }}</b> :
+        {{ top_source.total|money }} {{ currency }} ce mois-ci
+        ({{ top_source.share|floatformat:0 }} % de vos rentrees).
+        {% if top_source.share > 70 %}
+          Une part aussi concentree rend vos finances dependantes d'une seule source.
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{# ------------------------------------------------------------- Evolution #}
+<div class="card">
+  <h2 class="card-title">Evolution du mois</h2>
+  <div class="chart-wrap">
+    <canvas data-chart="line" data-series="{{ chart_timeline }}"></canvas>
+  </div>
+</div>
+
+{# ----------------------------------------------------------- Comparaisons #}
+<div class="card">
+  <h2 class="card-title">Comparaison avec la periode precedente</h2>
+  <div class="stat-grid">
+    {% for c in comparisons %}
+      <div class="stat">
+        <div class="k">{{ c.label }}</div>
+        <div class="v">{{ c.current|money }}</div>
+        <div class="d {% if c.improving %}down{% else %}up{% endif %}">
+          {% if c.variation != None %}
+            {% if c.improving %}▲{% else %}▼{% endif %}
+            {{ c.variation|abs_value|floatformat:0 }} %
+            <span class="neutral">vs {{ c.previous|money }}</span>
+          {% else %}
+            <span class="neutral">pas de reference</span>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ------------------------------------------------------ Revenus recurrents #}
+{% if recurring %}
+  <div class="card">
+    <h2 class="card-title">Revenus recurrents</h2>
+    <ul class="list">
+      {% for income in recurring %}
+        <li class="row">
+          <span class="row-icon" style="background:{{ income.source.color }}">
+            {{ income.source.icon|icon }}
+          </span>
+          <span class="row-main">
+            <span class="t">{{ income.description|default:income.source.name }}</span>
+            <span class="s">Dernier le {{ income.date|date:"d/m/Y" }}</span>
+          </span>
+          <span class="row-amount">{{ income.amount|money }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{# --------------------------------------------------------- Derniers revenus #}
+<div class="card">
+  <h2 class="card-title">
+    Derniers revenus
+    <a href="{% url 'income_history' %}">Tout voir</a>
+  </h2>
+  <ul class="list">
+    {% for income in recent %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ income.source.color }}">
+          {{ income.source.icon|icon }}
+        </span>
+        <span class="row-main">
+          <span class="t">
+            {{ income.description|default:income.source.name }}
+            {% if income.is_recurring %}<span class="limit-period">· recurrent</span>{% endif %}
+          </span>
+          <span class="s">{{ income.date|date:"d/m/Y" }} · {{ income.get_method_display }}</span>
+        </span>
+        <span class="row-amount income">+{{ income.amount|money }}</span>
+        <a class="btn btn-ghost btn-sm" href="{% url 'income_edit' income.pk %}">✏️</a>
+      </li>
+    {% empty %}
+      <div class="empty">
+        <span class="big">🧾</span>
+        Aucun revenu enregistre.<br>
+        <a href="{% url 'income_create' %}">Ajouter le premier</a>
+      </div>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

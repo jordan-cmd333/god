@@ -422,6 +422,36 @@ input[type=color] { height: 44px; padding: 4px; }
   box-shadow: 0 6px 18px rgba(15, 118, 110, .38);
 }
 
+/* --------------------------------------------------------------- Revenus */
+
+/* Le vert distingue d'un coup d'oeil ce qui rentre de ce qui sort. */
+.hero-income { background: linear-gradient(150deg, #15803d 0%, #126b34 100%); }
+.btn-income { background: var(--success); }
+.summary-bar-income { background: var(--success-soft); color: #14532d; }
+.row-amount.income { color: var(--success); }
+
+.balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 14px;
+}
+
+.balance-label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.balance-value { font-weight: 620; }
+
+.balance-total {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 11px;
+  font-size: 15px;
+}
+
+.balance-total .balance-label { color: var(--text); font-weight: 620; }
+.balance-total .balance-value { font-size: 19px; letter-spacing: -.01em; }
+
 /* ---------------------------------------------------------------- Charts */
 
 .chart-wrap { position: relative; width: 100%; }

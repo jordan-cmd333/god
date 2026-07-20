@@ -15,7 +15,7 @@ from django.conf import settings
 from django.db.models import Count, Sum
 from django.utils import timezone
 
-from .models import Alert, BudgetLimit, Category, Expense, Report
+from .models import Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Report
 
 ZERO = Decimal('0.00')
 
@@ -72,33 +72,28 @@ def previous_period(kind: str, ref: date | None = None) -> Period:
 # Agregations
 # --------------------------------------------------------------------------
 
-def expenses_in(user, period: Period, category=None):
-    qs = Expense.objects.filter(
-        user=user, date__gte=period.start, date__lte=period.end
-    )
-    if category is not None:
-        qs = qs.filter(category=category)
-    return qs
+def _rows_in(model, user, period: Period, **filters):
+    qs = model.objects.filter(user=user, date__gte=period.start, date__lte=period.end)
+    return qs.filter(**{k: v for k, v in filters.items() if v is not None})
 
 
-def total_for(user, period: Period, category=None) -> Decimal:
-    """Somme automatique des depenses de la periode."""
-    return expenses_in(user, period, category).aggregate(t=Sum('amount'))['t'] or ZERO
+def _total(model, user, period: Period, **filters) -> Decimal:
+    return _rows_in(model, user, period, **filters).aggregate(t=Sum('amount'))['t'] or ZERO
 
 
-def breakdown_by_category(user, period: Period):
-    """Liste [{name, color, total, share}] triee du plus gros au plus petit."""
+def _breakdown(model, relation, user, period: Period):
+    """Repartition [{name, color, total, count, share}], du plus gros au plus petit."""
     rows = (
-        expenses_in(user, period)
-        .values('category__name', 'category__color')
+        _rows_in(model, user, period)
+        .values(f'{relation}__name', f'{relation}__color')
         .annotate(total=Sum('amount'), count=Count('id'))
         .order_by('-total')
     )
     grand_total = sum((r['total'] for r in rows), ZERO)
     return [
         {
-            'name': r['category__name'],
-            'color': r['category__color'],
+            'name': r[f'{relation}__name'],
+            'color': r[f'{relation}__color'],
             'total': r['total'],
             'count': r['count'],
             'share': float(r['total']) / float(grand_total) * 100 if grand_total else 0,
@@ -107,16 +102,71 @@ def breakdown_by_category(user, period: Period):
     ]
 
 
+# -- Depenses ---------------------------------------------------------------
+
+def expenses_in(user, period: Period, category=None):
+    return _rows_in(Expense, user, period, category=category)
+
+
+def total_for(user, period: Period, category=None) -> Decimal:
+    """Somme automatique des depenses de la periode."""
+    return _total(Expense, user, period, category=category)
+
+
+def breakdown_by_category(user, period: Period):
+    return _breakdown(Expense, 'category', user, period)
+
+
 def top_category(user, period: Period):
     """Categorie ou l'utilisateur depense le plus sur la periode."""
     rows = breakdown_by_category(user, period)
     return rows[0] if rows else None
 
 
-def compare(user, kind: str, ref: date | None = None):
-    """Compare la periode courante a la precedente."""
+# -- Revenus ----------------------------------------------------------------
+
+def incomes_in(user, period: Period, source=None):
+    return _rows_in(Income, user, period, source=source)
+
+
+def income_total(user, period: Period, source=None) -> Decimal:
+    """Somme automatique des rentrees d'argent de la periode."""
+    return _total(Income, user, period, source=source)
+
+
+def breakdown_by_source(user, period: Period):
+    return _breakdown(Income, 'source', user, period)
+
+
+def top_source(user, period: Period):
+    """Source qui rapporte le plus sur la periode."""
+    rows = breakdown_by_source(user, period)
+    return rows[0] if rows else None
+
+
+def balance(user, period: Period):
+    """Solde de la periode : ce qui rentre moins ce qui sort."""
+    entrees, sorties = income_total(user, period), total_for(user, period)
+    return {
+        'income': entrees,
+        'expense': sorties,
+        'balance': entrees - sorties,
+        'is_positive': entrees >= sorties,
+        # Part des revenus deja depensee : au-dela de 100 %, on vit sur ses reserves.
+        'spent_ratio': float(sorties) / float(entrees) * 100 if entrees else None,
+        'period': period,
+    }
+
+
+def compare(user, kind: str, ref: date | None = None, model=Expense):
+    """Compare la periode courante a la precedente.
+
+    `improving` vaut « la situation va dans le bon sens » : depenser moins pour
+    les depenses, gagner plus pour les revenus.
+    """
     current, previous = period_bounds(kind, ref), previous_period(kind, ref)
-    now_total, prev_total = total_for(user, current), total_for(user, previous)
+    now_total = _total(model, user, current)
+    prev_total = _total(model, user, previous)
     # Sans reference sur la periode precedente, un pourcentage n'a pas de sens :
     # on renvoie None et les gabarits affichent « pas de reference ».
     variation = (
@@ -130,12 +180,13 @@ def compare(user, kind: str, ref: date | None = None):
         'previous': prev_total,
         'delta': now_total - prev_total,
         'variation': variation,
-        'improving': now_total <= prev_total,
+        'improving': (now_total >= prev_total if model is Income
+                      else now_total <= prev_total),
         'period': current,
     }
 
 
-def timeline(user, kind: str, ref: date | None = None):
+def timeline(user, kind: str, ref: date | None = None, model=Expense):
     """Serie temporelle pour le graphique d'evolution.
 
     jour -> 24 h impossible a granularite date, on renvoie donc les 14 derniers
@@ -145,7 +196,7 @@ def timeline(user, kind: str, ref: date | None = None):
     if kind == 'year':
         year = ref.year
         rows = (
-            Expense.objects.filter(user=user, date__year=year)
+            model.objects.filter(user=user, date__year=year)
             .values('date__month')
             .annotate(total=Sum('amount'))
         )
@@ -164,7 +215,7 @@ def timeline(user, kind: str, ref: date | None = None):
         span = [p.start + timedelta(days=i) for i in range((p.end - p.start).days + 1)]
 
     rows = (
-        Expense.objects.filter(user=user, date__gte=span[0], date__lte=span[-1])
+        model.objects.filter(user=user, date__gte=span[0], date__lte=span[-1])
         .values('date')
         .annotate(total=Sum('amount'))
     )
@@ -311,6 +362,7 @@ def dashboard_context(user, ref: date | None = None):
     month = period_bounds('month', ref)
     return {
         'comparisons': comparisons,
+        'balance': balance(user, month),
         'summaries': {c['kind']: c for c in comparisons},
         'limit_statuses': all_limit_statuses(user, ref),
         'top_category': top_category(user, month),
@@ -346,6 +398,48 @@ def unread_alerts(user, limit_count=5):
     return kept[:limit_count]
 
 
+def income_context(user, ref: date | None = None):
+    """Tout ce dont la page Revenus a besoin, en une passe."""
+    ref = ref or today()
+    month = period_bounds('month', ref)
+    comparisons = [
+        compare(user, kind, ref, model=Income) for kind in ('day', 'week', 'month', 'year')
+    ]
+    return {
+        'comparisons': comparisons,
+        'summaries': {c['kind']: c for c in comparisons},
+        'balance': balance(user, month),
+        'top_source': top_source(user, month),
+        'month_breakdown': breakdown_by_source(user, month),
+        'timeline': timeline(user, 'month', ref, model=Income),
+        'recent': Income.objects.filter(user=user).select_related('source')[:8],
+        'recurring': recurring_streams(user),
+    }
+
+
+def recurring_streams(user, limit_count=5):
+    """Les revenus recurrents, un par flux et non un par echeance.
+
+    Un salaire encaisse trois mois de suite est un seul flux : on ne garde que
+    la derniere occurrence, sinon la liste repete la meme ligne.
+    """
+    incomes = (
+        Income.objects.filter(user=user, is_recurring=True)
+        .select_related('source')
+        .order_by('-date')
+    )
+    seen, kept = set(), []
+    for income in incomes:
+        key = (income.source_id, income.description.strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(income)
+        if len(kept) == limit_count:
+            break
+    return kept
+
+
 def bootstrap_user(user):
     """Prepare un compte fraichement cree."""
     from .models import Profile
@@ -353,3 +447,5 @@ def bootstrap_user(user):
     Profile.objects.get_or_create(user=user)
     if not Category.objects.filter(user=user).exists():
         Category.create_defaults(user)
+    if not IncomeSource.objects.filter(user=user).exists():
+        IncomeSource.create_defaults(user)

@@ -24,6 +24,28 @@
 </div>
 
 <div class="card">
+  <h2 class="card-title">Configuration</h2>
+  <ul class="list">
+    <li class="row">
+      <span class="row-icon" style="background:#0f766e">🏷️</span>
+      <span class="row-main">
+        <span class="t">Categories de depenses</span>
+        <span class="s">{{ stats.categories }} categorie{{ stats.categories|pluralize }}</span>
+      </span>
+      <a class="btn btn-ghost btn-sm" href="{% url 'category_list' %}">Gerer</a>
+    </li>
+    <li class="row">
+      <span class="row-icon" style="background:#15803d">💵</span>
+      <span class="row-main">
+        <span class="t">Sources de revenus</span>
+        <span class="s">{{ stats.sources }} source{{ stats.sources|pluralize }}</span>
+      </span>
+      <a class="btn btn-ghost btn-sm" href="{% url 'source_list' %}">Gerer</a>
+    </li>
+  </ul>
+</div>
+
+<div class="card">
   <h2 class="card-title">Mes donnees</h2>
   <div class="stat-grid">
     <div class="stat">
@@ -35,11 +57,19 @@
       <div class="v">{{ stats.total|money }}</div>
     </div>
     <div class="stat">
+      <div class="k">Revenus</div>
+      <div class="v">{{ stats.incomes }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">Total encaisse</div>
+      <div class="v">{{ stats.earned|money }}</div>
+    </div>
+    <div class="stat">
       <div class="k">Categories</div>
       <div class="v">{{ stats.categories }}</div>
     </div>
     <div class="stat">
-      <div class="k">Limites actives</div>
+      <div class="k">Limites</div>
       <div class="v">{{ stats.limits }}</div>
     </div>
   </div>

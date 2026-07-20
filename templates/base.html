@@ -49,11 +49,12 @@
   <span class="fab-slot">
     <a href="{% url 'expense_create' %}" class="fab" title="Ajouter une depense">+</a>
   </span>
+  {# Categories et sources sont des reglages : ils vivent dans Parametres (⚙️). #}
+  <a href="{% url 'income_dashboard' %}" class="{% if 'income' in request.resolver_match.url_name or 'source' in request.resolver_match.url_name %}active{% endif %}">
+    <span class="ico">💵</span> Revenus
+  </a>
   <a href="{% url 'budget_list' %}" class="{% if request.resolver_match.url_name == 'budget_list' %}active{% endif %}">
     <span class="ico">🎯</span> Budgets
-  </a>
-  <a href="{% url 'category_list' %}" class="{% if request.resolver_match.url_name == 'category_list' %}active{% endif %}">
-    <span class="ico">🏷️</span> Categories
   </a>
 </nav>
 {% endblock %}

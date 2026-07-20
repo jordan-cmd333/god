@@ -13,10 +13,12 @@ from django.views.decorators.http import require_POST
 
 from . import exports, services
 from .forms import (
-    BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm, ProfileForm,
-    SignUpForm,
+    BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm, IncomeFilterForm,
+    IncomeForm, IncomeSourceForm, ProfileForm, SignUpForm,
 )
-from .models import Alert, BudgetLimit, Category, Expense, Profile
+from .models import (
+    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+)
 
 
 # --------------------------------------------------------------------------
@@ -165,6 +167,152 @@ def history(request):
         'count': expenses.count(),
         'querystring': request.GET.urlencode(),
     })
+
+
+# --------------------------------------------------------------------------
+# Revenus
+# --------------------------------------------------------------------------
+
+@login_required
+def income_dashboard(request):
+    """Vue d'ensemble des rentrees d'argent et de leurs sources."""
+    context = services.income_context(request.user)
+    context['chart_sources'] = json.dumps([
+        {'label': r['name'], 'value': float(r['total']), 'color': r['color']}
+        for r in context['month_breakdown']
+    ])
+    context['chart_timeline'] = json.dumps(context['timeline'])
+    return render(request, 'incomes.html', context)
+
+
+@login_required
+def income_create(request):
+    form = IncomeForm(request.POST or None, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        income = form.save()
+        messages.success(
+            request,
+            f'Revenu de {income.amount} enregistre depuis « {income.source} ».',
+        )
+        if 'save_and_new' in request.POST:
+            return redirect('income_create')
+        return redirect('income_dashboard')
+    return render(request, 'income_form.html', {'form': form, 'is_edit': False})
+
+
+@login_required
+def income_edit(request, pk):
+    income = get_object_or_404(Income, pk=pk, user=request.user)
+    form = IncomeForm(request.POST or None, instance=income, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Revenu mis a jour.')
+        return redirect('income_history')
+    return render(request, 'income_form.html',
+                  {'form': form, 'is_edit': True, 'income': income})
+
+
+@login_required
+@require_POST
+def income_delete(request, pk):
+    income = get_object_or_404(Income, pk=pk, user=request.user)
+    income.delete()
+    messages.success(request, 'Revenu supprime.')
+    return redirect('income_history')
+
+
+def filtered_incomes(user, data):
+    """Applique les filtres de l'historique des revenus."""
+    qs = Income.objects.filter(user=user).select_related('source')
+    if data.get('preset'):
+        period = services.period_bounds(data['preset'])
+        qs = qs.filter(date__gte=period.start, date__lte=period.end)
+    if data.get('date_from'):
+        qs = qs.filter(date__gte=data['date_from'])
+    if data.get('date_to'):
+        qs = qs.filter(date__lte=data['date_to'])
+    if data.get('source'):
+        qs = qs.filter(source=data['source'])
+    if data.get('min_amount') is not None:
+        qs = qs.filter(amount__gte=data['min_amount'])
+    if data.get('max_amount') is not None:
+        qs = qs.filter(amount__lte=data['max_amount'])
+    if data.get('q'):
+        term = data['q']
+        qs = qs.filter(Q(description__icontains=term) | Q(note__icontains=term))
+    return qs
+
+
+@login_required
+def income_history(request):
+    form = IncomeFilterForm(request.GET or None, user=request.user)
+    data = form.cleaned_data if form.is_valid() else {}
+    incomes = filtered_incomes(request.user, data)
+    total = incomes.aggregate(t=Sum('amount'))['t'] or Decimal('0')
+    return render(request, 'income_history.html', {
+        'form': form,
+        'incomes': incomes[:300],
+        'total': total,
+        'count': incomes.count(),
+        'querystring': request.GET.urlencode(),
+    })
+
+
+# --------------------------------------------------------------------------
+# Sources de revenus
+# --------------------------------------------------------------------------
+
+@login_required
+def source_list(request):
+    sources = (
+        IncomeSource.objects.filter(user=request.user)
+        .annotate(income_count=Count('incomes'), earned=Sum('incomes__amount'))
+    )
+    return render(request, 'sources.html', {
+        'sources': sources,
+        'form': IncomeSourceForm(user=request.user),
+    })
+
+
+@login_required
+@require_POST
+def source_create(request):
+    form = IncomeSourceForm(request.POST, user=request.user)
+    if form.is_valid():
+        form.save()
+        messages.success(request, 'Source ajoutee.')
+    else:
+        messages.error(request, form.errors.as_text())
+    return redirect('source_list')
+
+
+@login_required
+def source_edit(request, pk):
+    source = get_object_or_404(IncomeSource, pk=pk, user=request.user)
+    form = IncomeSourceForm(request.POST or None, instance=source, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Source mise a jour.')
+        return redirect('source_list')
+    return render(request, 'source_form.html', {'form': form, 'source': source})
+
+
+@login_required
+@require_POST
+def source_delete(request, pk):
+    source = get_object_or_404(IncomeSource, pk=pk, user=request.user)
+    try:
+        source.delete()
+        messages.success(request, 'Source supprimee.')
+    except ProtectedError:
+        source.is_archived = True
+        source.save(update_fields=['is_archived'])
+        messages.warning(
+            request,
+            'Des revenus proviennent de cette source : elle a ete archivee au lieu '
+            "d'etre supprimee, pour ne pas perdre votre historique.",
+        )
+    return redirect('source_list')
 
 
 # --------------------------------------------------------------------------
@@ -347,6 +495,10 @@ def settings_view(request):
             'limits': BudgetLimit.objects.filter(user=request.user).count(),
             'total': Expense.objects.filter(user=request.user)
                      .aggregate(t=Sum('amount'))['t'] or Decimal('0'),
+            'incomes': Income.objects.filter(user=request.user).count(),
+            'sources': IncomeSource.objects.filter(user=request.user).count(),
+            'earned': Income.objects.filter(user=request.user)
+                      .aggregate(t=Sum('amount'))['t'] or Decimal('0'),
         },
     })
 

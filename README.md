@@ -1,8 +1,8 @@
 # Budget Control
 
-Application mobile-first de gestion de dépenses personnelles : saisie rapide,
-limites budgétaires avec alertes, résumés automatiques par jour / semaine /
-mois / année, rapports et exports PDF et Excel.
+Application mobile-first de gestion de finances personnelles : dépenses et
+revenus, limites budgétaires avec alertes, solde, résumés automatiques par
+jour / semaine / mois / année, rapports et exports PDF et Excel.
 
 Django 6 · SQLite · aucune dépendance JavaScript externe (graphiques dessinés
 en canvas natif).
@@ -35,17 +35,30 @@ correspondantes, pour voir toutes les pages remplies.
 | `/` | Tableau de bord : KPI du jour, limites, répartition, évolution, comparaisons |
 | `/depenses/ajouter/` | Ajout rapide d'une dépense |
 | `/historique/` | Historique filtrable (date, catégorie, montant, période, texte) |
-| `/categories/` | Catégories personnalisables |
+| `/revenus/` | Vue d'ensemble des rentrées : sources, évolution, solde |
+| `/revenus/ajouter/` | Ajout rapide d'un revenu |
+| `/revenus/historique/` | Historique des revenus, mêmes filtres |
+| `/revenus/sources/` | Sources de revenus personnalisables |
+| `/categories/` | Catégories de dépenses personnalisables |
 | `/budgets/` | Limites journalières, hebdomadaires, mensuelles, annuelles |
 | `/rapports/` | Statistiques, graphiques et exports |
-| `/parametres/` | Devise, seuil d'alerte, export global, déconnexion |
+| `/parametres/` | Devise, seuil d'alerte, configuration, export global |
+
+La barre de navigation donne accès aux cinq écrans quotidiens (Accueil,
+Historique, ajout, Revenus, Budgets). Catégories et sources sont des réglages :
+on les atteint depuis Paramètres.
 
 ## Modèle de données
 
-`Profile` · `Category` · `Expense` · `BudgetLimit` · `Alert` · `Report`
+`Profile` · `Category` · `Expense` · `IncomeSource` · `Income` ·
+`BudgetLimit` · `Alert` · `Report`
 
-Chaque dépense est rattachée à une catégorie. Une catégorie encore utilisée est
-archivée plutôt que supprimée, afin de préserver l'historique.
+Chaque dépense est rattachée à une catégorie, chaque revenu à une source. Une
+catégorie ou une source encore utilisée est archivée plutôt que supprimée, afin
+de préserver l'historique.
+
+Revenus et dépenses partagent les mêmes fonctions d'agrégation, paramétrées par
+modèle : une période se calcule une seule fois, pour les deux.
 
 ## Règles de gestion
 
@@ -63,6 +76,12 @@ les mêmes chiffres.
   l'interface n'affiche que le plus sévère.
 - Les rapports sont générés et rafraîchis selon la date des dépenses.
 - Une comparaison sans période de référence n'affiche pas de pourcentage.
+- Pour un revenu, une hausse est une amélioration ; pour une dépense, c'est
+  l'inverse — les flèches et les couleurs suivent cette logique.
+- Le solde d'une période vaut revenus − dépenses. Au-delà de 80 % des revenus
+  dépensés la barre passe à l'orange, au-delà de 100 % au rouge.
+- Un revenu récurrent encaissé plusieurs fois n'apparaît qu'une fois dans la
+  liste des flux, à sa date la plus récente.
 
 ## Sécurité
 
@@ -83,6 +102,7 @@ Variables d'environnement : `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`,
 ./venv/bin/python manage.py test budget
 ```
 
-32 tests couvrant les bornes de périodes, les agrégations, les comparaisons, le
-déclenchement et la déduplication des alertes, la génération des rapports,
-l'isolation des données entre comptes, les filtres et les deux exports.
+54 tests couvrant les bornes de périodes, les agrégations (dépenses et
+revenus), les comparaisons, le déclenchement et la déduplication des alertes,
+le calcul du solde, la génération des rapports, l'isolation des données entre
+comptes, les filtres et les exports.

@@ -1,0 +1,51 @@
+{% load budget_extras %}
+{% comment %}
+Solde d'une periode : entrees, sorties, reste. Partage entre l'accueil et la
+page Revenus pour que les deux affichent exactement la meme chose.
+{% endcomment %}
+<div class="balance">
+  <div class="balance-row">
+    <span class="balance-label"><span class="dot" style="background:var(--success)"></span> Revenus</span>
+    <span class="balance-value">{{ balance.income|money }}</span>
+  </div>
+  <div class="balance-row">
+    <span class="balance-label"><span class="dot" style="background:var(--danger)"></span> Depenses</span>
+    <span class="balance-value">−{{ balance.expense|money }}</span>
+  </div>
+
+  {% if balance.spent_ratio != None %}
+    <div class="bar {% if balance.spent_ratio >= 100 %}is-exceeded{% elif balance.spent_ratio >= 80 %}is-warning{% endif %}"
+         style="margin:10px 0 6px">
+      <span style="width:{% if balance.spent_ratio > 100 %}100{% else %}{{ balance.spent_ratio|floatformat:0 }}{% endif %}%"></span>
+    </div>
+    <div class="limit-foot" style="margin-bottom:10px">
+      <span>{{ balance.spent_ratio|floatformat:0 }} % de vos revenus depenses</span>
+    </div>
+  {% endif %}
+
+  <div class="balance-row balance-total">
+    <span class="balance-label">{% if balance.is_positive %}Reste{% else %}Deficit{% endif %}</span>
+    <span class="balance-value {% if balance.is_positive %}down{% else %}up{% endif %}">
+      {{ balance.balance|abs_value|money }} {{ currency }}
+    </span>
+  </div>
+
+  {% if not balance.is_positive %}
+    <div class="alert alert-exceeded" style="margin:10px 0 0">
+      <span class="ico">⛔</span>
+      <div>
+        Vous depensez plus que vous ne gagnez sur cette periode :
+        {{ balance.balance|abs_value|money }} {{ currency }} de plus.
+      </div>
+    </div>
+  {% elif balance.income == 0 %}
+    <div class="alert alert-info" style="margin:10px 0 0">
+      <span class="ico">💡</span>
+      <div>
+        Aucun revenu enregistre sur la periode.
+        <a href="{% url 'income_create' %}">Ajoutez vos rentrees d'argent</a>
+        pour suivre votre solde.
+      </div>
+    </div>
+  {% endif %}
+</div>
