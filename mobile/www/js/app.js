@@ -40,6 +40,23 @@ const App = (function () {
   function icon(name) { return Seed.icon(name); }
   function cur() { return esc(State.currency); }
 
+  // Confirmation interne : window.confirm() renvoie toujours false dans une
+  // WebView sans WebChromeClient, ce qui bloquait toutes les suppressions.
+  function confirmModal(message) {
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = `<div class="modal-box"><p>${esc(message)}</p>
+        <div class="btn-row"><button type="button" class="btn btn-ghost" data-no>Annuler</button>
+        <button type="button" class="btn btn-danger" data-yes>Confirmer</button></div></div>`;
+      document.body.appendChild(ov);
+      const close = (v) => { ov.remove(); resolve(v); };
+      ov.querySelector('[data-no]').addEventListener('click', () => close(false));
+      ov.querySelector('[data-yes]').addEventListener('click', () => close(true));
+      ov.addEventListener('click', (e) => { if (e.target === ov) close(false); });
+    });
+  }
+
   function cat(id) { return State.data.categories.find((c) => c.id === id) || { name: '?', color: '#64748b', icon: 'other' }; }
   function src(id) { return State.data.sources.find((s) => s.id === id) || { name: '?', color: '#64748b', icon: 'other' }; }
 
@@ -364,7 +381,7 @@ const App = (function () {
     const delForm = root.querySelector('[data-del]');
     if (delForm) delForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!confirm('Supprimer definitivement ?')) return;
+      if (!await confirmModal('Supprimer definitivement ?')) return;
       await opts.onDelete(Number(delForm.getAttribute('data-id')));
     });
   }
@@ -479,7 +496,7 @@ const App = (function () {
         const exp = root.querySelector('[data-export]');
         if (exp) exp.addEventListener('click', () => exportCSV(opts.income ? 'incomes' : 'expenses', rows));
         const pr = root.querySelector('[data-print]');
-        if (pr) pr.addEventListener('click', () => window.print());
+        if (pr) pr.addEventListener('click', () => printDoc());
       },
     };
   }
@@ -604,7 +621,7 @@ const App = (function () {
           flash('success', 'Limite enregistree.'); go('#/budgets');
         });
         root.querySelectorAll('[data-del-limit]').forEach((b) => b.addEventListener('click', async () => {
-          if (!confirm('Supprimer cette limite ?')) return;
+          if (!await confirmModal('Supprimer cette limite ?')) return;
           await DB.remove('limits', Number(b.getAttribute('data-del-limit')));
           State.data.limits = await DB.all('limits'); State.data.alerts = await DB.all('alerts');
           flash('success', 'Limite supprimee.'); go('#/budgets');
@@ -676,7 +693,7 @@ const App = (function () {
         });
         root.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
           const id = Number(b.getAttribute('data-del'));
-          if (!confirm('Supprimer ?')) return;
+          if (!await confirmModal('Supprimer ?')) return;
           if ((usage[id] || { count: 0 }).count > 0) {
             const r = items.find((x) => x.id === id); await DB.put(opts.store, { ...r, archived: true });
             flash('warning', 'Element utilise : archive au lieu d\'etre supprime, pour preserver l\'historique.');
@@ -746,7 +763,7 @@ const App = (function () {
       title: 'Rapports', subtitle: `Du ${fmtDate(period.start)} au ${fmtDate(period.end)}`, html,
       mount: (root) => {
         root.querySelector('[data-export]').addEventListener('click', () => exportCSV('expenses', S.inPeriod(d.expenses, period).sort(sortByDateDesc)));
-        root.querySelector('[data-print]').addEventListener('click', () => window.print());
+        root.querySelector('[data-print]').addEventListener('click', () => printDoc());
       },
     };
   };
@@ -819,7 +836,7 @@ const App = (function () {
         root.querySelector('[data-restore]').addEventListener('click', () => root.querySelector('[data-restore-file]').click());
         root.querySelector('[data-restore-file]').addEventListener('change', restoreJSON);
         root.querySelector('[data-seed-demo]').addEventListener('click', async () => {
-          if (!confirm('Remplacer les donnees actuelles par un jeu de demonstration ?')) return;
+          if (!await confirmModal('Remplacer les donnees actuelles par un jeu de demonstration ?')) return;
           await seedDemo(); await load(); flash('success', 'Donnees de demonstration chargees.'); go('#/');
         });
       },
@@ -829,11 +846,24 @@ const App = (function () {
   // --- Sauvegarde / exports (hors ligne) ----------------------------------
 
   function download(filename, text, mime) {
+    // Dans l'APK, le telechargement de blob n'existe pas : on passe par le pont
+    // natif (Storage Access Framework). En navigateur, repli sur l'ancre <a>.
+    if (window.AndroidBridge && window.AndroidBridge.saveText) {
+      try { window.AndroidBridge.saveText(filename, mime || 'text/plain', text); return; }
+      catch (e) { /* repli ci-dessous */ }
+    }
     const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function printDoc() {
+    if (window.AndroidBridge && window.AndroidBridge.printPage) {
+      try { window.AndroidBridge.printPage(); return; } catch (e) { /* repli */ }
+    }
+    window.print();
   }
 
   function csvCell(v) { const s = String(v == null ? '' : v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -863,7 +893,7 @@ const App = (function () {
 
   async function restoreJSON(e) {
     const file = e.target.files[0]; if (!file) return;
-    if (!confirm('Remplacer toutes les donnees actuelles par cette sauvegarde ?')) { e.target.value = ''; return; }
+    if (!await confirmModal('Remplacer toutes les donnees actuelles par cette sauvegarde ?')) { e.target.value = ''; return; }
     try {
       const dump = JSON.parse(await file.text());
       await DB.clearAll();

@@ -568,3 +568,28 @@ canvas { display: block; width: 100%; }
   body { padding: 0; background: #fff; }
   .card { box-shadow: none; border-color: #ddd; break-inside: avoid; }
 }
+
+/* ------------------------------------------------------ Confirmation (modal) */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, .45);
+}
+
+.modal-box {
+  width: 100%;
+  max-width: 340px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, .28);
+}
+
+.modal-box p { margin: 0 0 18px; font-size: 15px; }
+.modal-box .btn-row { margin: 0; }

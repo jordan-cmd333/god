@@ -31,6 +31,23 @@ mobile/
     └── build_apk.sh          ← build manuel aapt2 → javac → d8 → zipalign → apksigner
 ```
 
+### Intégration Android (limites d'une WebView)
+
+Une WebView nue ignore certaines API web. Trois ponts sont donc en place, tous
+sans permission ni réseau :
+
+- **Confirmations** : `window.confirm()` renvoie toujours `false` dans une
+  WebView sans `WebChromeClient`, ce qui bloquait toutes les suppressions
+  (limite, dépense, catégorie…). Remplacé par une boîte de dialogue **interne**
+  à l'application (indépendante de la WebView).
+- **Import de sauvegarde** : `<input type="file">` nécessite
+  `onShowFileChooser` (fourni par `AppChromeClient`) — via le sélecteur système,
+  sans permission de stockage.
+- **Exports & impression** : le téléchargement de *blob* n'existe pas en
+  WebView. Un pont `AndroidBridge` enregistre les fichiers (CSV, JSON) via le
+  Storage Access Framework et lance l'impression / PDF via le service système.
+  Côté web, repli automatique sur le téléchargement navigateur.
+
 ### Pourquoi zéro permission fonctionne
 
 Les fichiers de `assets/www` sont servis à la WebView via une origine virtuelle
