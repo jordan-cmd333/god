@@ -74,6 +74,10 @@ les mêmes chiffres.
   d'unicité `(limite, niveau, début de période)` empêche les doublons.
 - Un dépassement enregistre les deux niveaux — trace complète en base — mais
   l'interface n'affiche que le plus sévère.
+- Une alerte se déclenche aussi quand les dépenses du mois dépassent les
+  revenus du mois (uniquement si des revenus sont enregistrés). Tant qu'elle
+  n'a pas été lue, elle se met à jour et disparaît si la situation se rétablit ;
+  une alerte déjà lue reste comme trace.
 - Les rapports sont générés et rafraîchis selon la date des dépenses.
 - Une comparaison sans période de référence n'affiche pas de pourcentage.
 - Pour un revenu, une hausse est une amélioration ; pour une dépense, c'est
@@ -102,7 +106,8 @@ Variables d'environnement : `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`,
 ./venv/bin/python manage.py test budget
 ```
 
-54 tests couvrant les bornes de périodes, les agrégations (dépenses et
-revenus), les comparaisons, le déclenchement et la déduplication des alertes,
-le calcul du solde, la génération des rapports, l'isolation des données entre
-comptes, les filtres et les exports.
+64 tests couvrant les bornes de périodes, les agrégations (dépenses et
+revenus), les comparaisons, le déclenchement et la déduplication des alertes
+(limites et dépassement des revenus, avec cycle de vie complet), le calcul du
+solde, la génération des rapports, l'isolation des données entre comptes, les
+filtres et les exports.

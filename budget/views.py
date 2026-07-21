@@ -113,6 +113,13 @@ def _most_severe(alerts):
 
 
 def _flash_alert(request, alert):
+    if alert.kind == Alert.Kind.OVERSPEND:
+        messages.error(
+            request,
+            f'Vos depenses du mois ({alert.spent}) depassent vos revenus '
+            f'({alert.limit_amount}).',
+        )
+        return
     cible = alert.limit.category.name if alert.limit.category else 'budget global'
     periode = alert.limit.get_period_display().lower()
     if alert.level == Alert.Level.EXCEEDED:
@@ -194,6 +201,9 @@ def income_create(request):
             request,
             f'Revenu de {income.amount} enregistre depuis « {income.source} ».',
         )
+        # Un revenu peut resoudre (ou, si edite a la baisse, creer) l'alerte
+        # depenses > revenus du mois.
+        services.evaluate_alerts(request.user, income.date)
         if 'save_and_new' in request.POST:
             return redirect('income_create')
         return redirect('income_dashboard')
@@ -206,6 +216,7 @@ def income_edit(request, pk):
     form = IncomeForm(request.POST or None, instance=income, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
+        services.evaluate_alerts(request.user, income.date)
         messages.success(request, 'Revenu mis a jour.')
         return redirect('income_history')
     return render(request, 'income_form.html',
@@ -216,7 +227,9 @@ def income_edit(request, pk):
 @require_POST
 def income_delete(request, pk):
     income = get_object_or_404(Income, pk=pk, user=request.user)
+    income_date = income.date
     income.delete()
+    services.evaluate_alerts(request.user, income_date)
     messages.success(request, 'Revenu supprime.')
     return redirect('income_history')
 

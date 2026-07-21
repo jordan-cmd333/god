@@ -263,7 +263,16 @@ class BudgetLimit(models.Model):
 
 
 class Alert(models.Model):
-    """Alerte levee lorsqu'une limite atteint le seuil ou est depassee."""
+    """Alerte : limite budgetaire atteinte/depassee, ou depenses > revenus.
+
+    `spent` et `limit_amount` gardent un sens commun aux deux types : ce qui a
+    ete depense, et le plafond franchi (le montant de la limite, ou les revenus
+    du mois pour une alerte de type OVERSPEND).
+    """
+
+    class Kind(models.TextChoices):
+        LIMIT = 'limit', 'Limite budgetaire'
+        OVERSPEND = 'overspend', 'Depenses superieures aux revenus'
 
     class Level(models.TextChoices):
         WARNING = 'warning', 'Seuil atteint'
@@ -272,8 +281,10 @@ class Alert(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='alerts'
     )
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.LIMIT)
     limit = models.ForeignKey(
-        BudgetLimit, on_delete=models.CASCADE, related_name='alerts'
+        BudgetLimit, on_delete=models.CASCADE, related_name='alerts',
+        null=True, blank=True,  # nul pour une alerte OVERSPEND, sans limite associee
     )
     level = models.CharField(max_length=8, choices=Level.choices)
     period_start = models.DateField()
@@ -290,11 +301,18 @@ class Alert(models.Model):
             models.UniqueConstraint(
                 fields=['limit', 'level', 'period_start'],
                 name='unique_alert_per_limit_period_level',
-            )
+            ),
+            # Au plus une alerte « depenses > revenus » par mois.
+            models.UniqueConstraint(
+                fields=['user', 'period_start'],
+                condition=models.Q(kind='overspend'),
+                name='unique_overspend_per_month',
+            ),
         ]
 
     def __str__(self):
-        return f'{self.get_level_display()} - {self.limit}'
+        cible = self.limit if self.limit_id else self.get_kind_display()
+        return f'{self.get_level_display()} - {cible}'
 
     @property
     def ratio(self):

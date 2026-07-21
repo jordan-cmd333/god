@@ -12,11 +12,18 @@
   <div class="alert {% if alert.level == 'exceeded' %}alert-exceeded{% else %}alert-warning{% endif %}">
     <span class="ico">{% if alert.level == 'exceeded' %}⛔{% else %}⚠️{% endif %}</span>
     <div>
-      <b>{{ alert.get_level_display }}</b> —
-      limite {{ alert.limit.get_period_display|lower }} sur
-      {% if alert.limit.category %}{{ alert.limit.category.name }}{% else %}toutes categories{% endif %} :
-      {{ alert.spent|money }} / {{ alert.limit_amount|money }} {{ currency }}
-      ({{ alert.ratio|floatformat:0 }} %).
+      {% if alert.kind == 'overspend' %}
+        <b>Depenses superieures aux revenus</b> —
+        ce mois-ci vous avez depense {{ alert.spent|money }} {{ currency }}
+        pour {{ alert.limit_amount|money }} de revenus
+        ({{ alert.ratio|floatformat:0 }} %).
+      {% else %}
+        <b>{{ alert.get_level_display }}</b> —
+        limite {{ alert.limit.get_period_display|lower }} sur
+        {% if alert.limit.category %}{{ alert.limit.category.name }}{% else %}toutes categories{% endif %} :
+        {{ alert.spent|money }} / {{ alert.limit_amount|money }} {{ currency }}
+        ({{ alert.ratio|floatformat:0 }} %).
+      {% endif %}
     </div>
   </div>
 {% endfor %}

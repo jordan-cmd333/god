@@ -315,7 +315,48 @@ def evaluate_alerts(user, ref: date | None = None):
             elif alert.spent != status['spent']:
                 alert.spent = status['spent']
                 alert.save(update_fields=['spent'])
+
+    overspend = evaluate_overspend(user, ref)
+    if overspend:
+        created.append(overspend)
     return created
+
+
+def evaluate_overspend(user, ref: date | None = None):
+    """Alerte quand les depenses du mois depassent les revenus du mois.
+
+    Ne se declenche que si des revenus sont enregistres (sinon un utilisateur
+    qui ne suit que ses depenses recevrait un bandeau rouge permanent). Tant
+    qu'elle n'a pas ete lue, l'alerte se met a jour et disparait si la situation
+    se retablit — un bandeau rouge devenu faux serait pire que pas d'alerte.
+    """
+    ref = ref or today()
+    month = period_bounds('month', ref)
+    income = income_total(user, month)
+    expense = total_for(user, month)
+
+    existing = Alert.objects.filter(
+        user=user, kind=Alert.Kind.OVERSPEND, period_start=month.start
+    ).first()
+
+    if not (income > ZERO and expense > income):
+        if existing and not existing.is_read:
+            existing.delete()  # situation resolue, alerte non lue : on la retire
+        return None
+
+    if existing:
+        if not existing.is_read and (
+            existing.spent != expense or existing.limit_amount != income
+        ):
+            existing.spent, existing.limit_amount = expense, income
+            existing.save(update_fields=['spent', 'limit_amount'])
+        return None  # deja signalee ce mois-ci
+
+    return Alert.objects.create(
+        user=user, kind=Alert.Kind.OVERSPEND, level=Alert.Level.EXCEEDED,
+        limit=None, period_start=month.start, period_end=month.end,
+        spent=expense, limit_amount=income,
+    )
 
 
 # --------------------------------------------------------------------------

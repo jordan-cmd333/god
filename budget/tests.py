@@ -343,6 +343,106 @@ class BudgetLimitViewTests(BaseCase):
         self.assertContains(response, 'checked')
 
 
+class OverspendAlertTests(BaseCase):
+    """Alerte quand les depenses du mois depassent les revenus du mois."""
+
+    def setUp(self):
+        super().setUp()
+        self.salaire = IncomeSource.objects.get(user=self.user, name='Salaire')
+
+    def earn(self, amount, when=None):
+        return Income.objects.create(
+            user=self.user, source=self.salaire,
+            amount=Decimal(amount), date=when or self.today,
+        )
+
+    def _overspend(self):
+        return Alert.objects.filter(user=self.user, kind=Alert.Kind.OVERSPEND)
+
+    def test_pas_d_alerte_quand_les_revenus_couvrent_les_depenses(self):
+        self.earn('100000')
+        self.spend('60000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().count(), 0)
+
+    def test_alerte_quand_les_depenses_depassent_les_revenus(self):
+        self.earn('100000')
+        self.spend('130000')
+        services.evaluate_alerts(self.user, self.today)
+        alert = self._overspend().get()
+        self.assertEqual(alert.level, Alert.Level.EXCEEDED)
+        self.assertEqual(alert.spent, Decimal('130000'))
+        self.assertEqual(alert.limit_amount, Decimal('100000'))
+        self.assertIsNone(alert.limit_id)
+
+    def test_pas_d_alerte_sans_revenu_enregistre(self):
+        # Un utilisateur qui ne suit que ses depenses ne doit pas etre alarme.
+        self.spend('50000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().count(), 0)
+
+    def test_l_alerte_n_est_pas_dupliquee(self):
+        self.earn('100000')
+        self.spend('130000')
+        services.evaluate_alerts(self.user, self.today)
+        self.spend('5000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().count(), 1)
+
+    def test_l_alerte_non_lue_se_met_a_jour(self):
+        self.earn('100000')
+        self.spend('130000')
+        services.evaluate_alerts(self.user, self.today)
+        self.spend('20000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().get().spent, Decimal('150000'))
+
+    def test_l_alerte_non_lue_disparait_si_la_situation_se_retablit(self):
+        self.earn('100000')
+        self.spend('130000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().count(), 1)
+        self.earn('60000')  # les revenus repassent au-dessus des depenses
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().count(), 0)
+
+    def test_une_alerte_lue_reste_comme_trace(self):
+        self.earn('100000')
+        self.spend('130000')
+        services.evaluate_alerts(self.user, self.today)
+        self._overspend().update(is_read=True)
+        self.earn('60000')
+        services.evaluate_alerts(self.user, self.today)
+        # Deja acquittee : on la conserve comme historique plutot que l'effacer.
+        self.assertEqual(self._overspend().count(), 1)
+
+    def test_ajouter_un_revenu_resout_l_alerte_via_la_vue(self):
+        self.client.force_login(self.user)
+        self.spend('130000')
+        self.earn('100000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(self._overspend().count(), 1)
+        self.client.post(reverse('income_create'), {
+            'amount': '60000', 'source': self.salaire.pk,
+            'date': self.today.isoformat(), 'method': 'transfer',
+            'description': '', 'note': '',
+        })
+        self.assertEqual(self._overspend().count(), 0)
+
+    def test_l_alerte_apparait_sur_le_tableau_de_bord(self):
+        self.client.force_login(self.user)
+        self.earn('100000')
+        self.spend('130000')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'Depenses superieures aux revenus')
+
+    def test_l_alerte_compte_dans_le_badge_non_lu(self):
+        self.earn('100000')
+        self.spend('130000')
+        services.evaluate_alerts(self.user, self.today)
+        self.assertEqual(len(services.unread_alerts(self.user)), 1)
+
+
 class ReportTests(BaseCase):
     def test_le_rapport_est_genere_selon_la_date_des_depenses(self):
         self.spend('2000', category=self.food)
