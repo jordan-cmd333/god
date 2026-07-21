@@ -4,3 +4,9 @@ db.sqlite3
 __pycache__/
 *.py[cod]
 .env
+
+# Build Android
+mobile/android/build/
+mobile/android/debug.keystore
+mobile/android/*.apk
+mobile/android/*.idsig
