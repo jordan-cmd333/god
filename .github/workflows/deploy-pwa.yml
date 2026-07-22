@@ -1,0 +1,45 @@
+name: Deploier la PWA sur GitHub Pages
+
+# Publie le dossier mobile/www (la PWA) sur GitHub Pages.
+# Seul mobile/www est publie : ni l'app Django, ni le projet Android.
+# URL resultante : https://<utilisateur>.github.io/<depot>/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/www/**'
+      - '.github/workflows/deploy-pwa.yml'
+  workflow_dispatch:   # permet un declenchement manuel depuis l'onglet Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Une seule publication a la fois ; on ne coupe pas un deploiement en cours.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Configurer Pages
+        uses: actions/configure-pages@v5
+
+      - name: Preparer l'artefact (uniquement mobile/www)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: mobile/www
+
+      - name: Deployer
+        id: deployment
+        uses: actions/deploy-pages@v4

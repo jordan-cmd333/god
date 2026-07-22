@@ -26,9 +26,11 @@ est local) — une fois installée, elle se sert entièrement de son cache.
 ### Étapes
 
 1. **Héberger `mobile/www` sur une URL https.** L'installation d'une PWA exige
-   https (contrainte des navigateurs). N'importe quel hébergement statique
-   convient (GitHub Pages, Netlify, un serveur perso…). C'est nécessaire
-   **uniquement pour l'installation** ; ensuite l'app tourne hors ligne.
+   https (contrainte des navigateurs). C'est nécessaire **uniquement pour
+   l'installation** ; ensuite l'app tourne hors ligne. Config GitHub Pages prête
+   à l'emploi : voir [`DEPLOY-github-pages.md`](DEPLOY-github-pages.md) (workflow
+   qui publie automatiquement `mobile/www`). Tout autre hébergement statique
+   https convient aussi (Netlify, Cloudflare Pages…).
 2. Sur l'iPhone, ouvrir cette URL dans **Safari**.
 3. Bouton **Partager** → **Sur l'écran d'accueil** → **Ajouter**.
 4. Lancer « Budget Control » depuis l'écran d'accueil : plein écran, hors ligne.
