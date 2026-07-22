@@ -1,13 +1,53 @@
-# Budget Control — version Android hors ligne
+# Budget Control — version mobile hors ligne
 
-Application **100 % hors ligne**, empaquetée en APK, **sans aucune permission**
-(notamment pas de `INTERNET`). Elle ne peut techniquement pas accéder au réseau,
-même téléphone connecté. Fonctionne à l'identique en mode avion.
+Application **100 % hors ligne** : toute la logique métier (périodes,
+agrégations, alertes, solde, dépassement des revenus, rapports) est portée en
+JavaScript et les données vivent en **IndexedDB** sur l'appareil. Aucun serveur,
+aucun appel réseau.
 
-C'est une **réécriture côté client** de l'application Django : toute la logique
-métier (périodes, agrégations, alertes, solde, dépassement des revenus,
-rapports) a été portée en JavaScript, et les données sont stockées en
-**IndexedDB** sur l'appareil. Aucun serveur, aucun appel API.
+Deux emballages partagent le **même code** (`mobile/www`) :
+
+- **Android** : APK **sans aucune permission** (pas d'`INTERNET`) — voir
+  [« APK Android »](#apk-android) plus bas.
+- **iOS (et Android)** : **PWA** installable via « Sur l'écran d'accueil » — voir
+  [« Installer sur iOS (PWA) »](#installer-sur-ios-pwa) juste en dessous.
+
+## Installer sur iOS (PWA)
+
+iOS n'autorise pas la compilation d'une app hors d'un Mac + Xcode + compte Apple
+Developer. La voie sans Mac est donc la **Progressive Web App** : l'app s'ajoute
+à l'écran d'accueil, s'ouvre en plein écran et fonctionne hors ligne grâce à un
+*service worker* qui met tous les fichiers en cache.
+
+À noter : iOS n'a pas de « permission Internet » à retirer comme Android. La
+garantie « aucun réseau » tient au fait que l'app **n'émet aucune requête** (tout
+est local) — une fois installée, elle se sert entièrement de son cache.
+
+### Étapes
+
+1. **Héberger `mobile/www` sur une URL https.** L'installation d'une PWA exige
+   https (contrainte des navigateurs). N'importe quel hébergement statique
+   convient (GitHub Pages, Netlify, un serveur perso…). C'est nécessaire
+   **uniquement pour l'installation** ; ensuite l'app tourne hors ligne.
+2. Sur l'iPhone, ouvrir cette URL dans **Safari**.
+3. Bouton **Partager** → **Sur l'écran d'accueil** → **Ajouter**.
+4. Lancer « Budget Control » depuis l'écran d'accueil : plein écran, hors ligne.
+   Activer le **mode avion** pour vérifier — l'app se charge et fonctionne.
+
+Fichiers PWA : [`manifest.webmanifest`](www/manifest.webmanifest) (nom, icônes,
+`display: standalone`), [`sw.js`](www/sw.js) (précache + réponse « cache
+d'abord »), balises Apple dans [`index.html`](www/index.html), icônes dans
+[`www/icons/`](www/icons). Le service worker est **désactivé dans l'APK Android**
+(origine `appassets.local`), qui sert déjà tout en local.
+
+Vérifié ici : manifeste valide, service worker enregistré et actif, 13 fichiers
+précachés, et **chargement complet de l'application serveur coupé** (donc hors
+ligne). L'installation réelle sur un iPhone est l'étape que vous validez.
+
+## APK Android
+
+C'est une **réécriture côté client** de l'application Django, empaquetée dans une
+WebView **sans aucune permission**. Fonctionne à l'identique en mode avion.
 
 ## Architecture
 
