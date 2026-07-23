@@ -130,6 +130,48 @@ Vérifications déjà effectuées : le manifeste ne déclare **aucune**
 est valide, et aucun fichier JS ne contient d'appel réseau (`fetch`, `XHR`,
 `WebSocket`) ni d'URL externe.
 
+## Code de licence (Android uniquement)
+
+Au **premier lancement** de l'APK, l'application exige un **code de licence**
+avant toute utilisation. Une fois un code valide saisi, il est mémorisé
+(IndexedDB) et n'est plus redemandé. La version iOS (PWA) et le navigateur ne
+sont **pas** concernés (le verrou ne s'active qu'en présence du pont natif
+Android).
+
+### Générer des codes à distribuer
+
+```bash
+python3 mobile/license-keygen.py 20        # 20 codes distincts
+python3 mobile/license-keygen.py 20 > codes.txt
+python3 mobile/license-keygen.py --check BC-FW14K-TWFZ4-TTDQP   # vérifier un code
+```
+
+Format : `BC-XXXXX-XXXXX-CCCCC`. Le dernier groupe est une **somme de contrôle**
+(SHA-256 d'un secret partagé) que l'app recalcule hors ligne — c'est ainsi
+qu'elle valide un code **sans liste de codes** ni réseau. La saisie tolère les
+minuscules, les espaces et les confusions `O/0`, `I/L/1`.
+
+### Ce que ce verrou vaut (et ne vaut pas)
+
+C'est un verrou **dissuasif contre le partage occasionnel**, pas une protection
+incassable. Comme l'app est **hors ligne**, l'algorithme et le secret sont
+présents dans l'app livrée — et, ce dépôt étant **public** (et la PWA aussi),
+ils sont directement lisibles dans [`mobile/www/js/app.js`](www/js/app.js)
+(`LICENSE_SECRET`). Une personne technique peut donc fabriquer des codes ou
+retirer l'écran. Pour un verrou réellement résistant, il faudrait des **codes
+signés** (l'app ne contient qu'une clé publique, vous seul signez les codes) —
+je peux le mettre en place si besoin.
+
+### Invalider des codes fuités
+
+Changez `LICENSE_SECRET` **aux deux endroits** — dans
+[`mobile/www/js/app.js`](www/js/app.js) et dans
+[`mobile/license-keygen.py`](license-keygen.py) (valeurs identiques) — puis
+reconstruisez l'APK et régénérez des codes. Les anciens codes ne seront plus
+acceptés. (Astuce : garder le secret hors du dépôt public renforcerait la
+protection ; sur demande, je peux l'externaliser dans un fichier ignoré par
+git.)
+
 ## Écarts assumés par rapport à la version Django
 
 - **Authentification** : la connexion multi-utilisateur serveur n'a pas de sens

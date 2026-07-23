@@ -905,6 +905,86 @@ const App = (function () {
     } catch (err) { flash('error', 'Fichier invalide.'); go('#/settings'); }
   }
 
+  // --- Activation par code de licence (Android uniquement) ----------------
+  //
+  // Cle au format BC-XXXXX-XXXXX-CCCCC : les deux premiers groupes sont le
+  // numero de serie, le dernier une somme de controle derivee par SHA-256 d'un
+  // secret partage. L'app valide donc les cles hors ligne, sans lister toutes
+  // les cles valides. Limite assumee (option « cles generees ») : le secret
+  // etant present dans l'app, une personne technique peut le retrouver et
+  // fabriquer des cles. C'est un verrou dissuasif, pas une protection absolue.
+  // Le generateur associe : mobile/license-keygen.py (meme secret, meme algo).
+
+  const LICENSE_SECRET = 'BudgetControl::licence::v1::7bQ9-kZ2r-Nf5T';
+  const LICENSE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // base32 (sans I L O U)
+
+  async function licenseChecksum(payload) {
+    const bytes = new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(LICENSE_SECRET + ':' + payload))
+    );
+    // 4 premiers octets -> entier 32 bits -> 25 bits de poids fort -> 5 caracteres.
+    const n = bytes[0] * 16777216 + bytes[1] * 65536 + bytes[2] * 256 + bytes[3];
+    const n25 = Math.floor(n / 128);
+    let out = '';
+    for (let i = 0; i < 5; i++) {
+      out += LICENSE_ALPHABET[Math.floor(n25 / Math.pow(2, 5 * (4 - i))) % 32];
+    }
+    return out;
+  }
+
+  function normalizeLicense(raw) {
+    return (raw || '').toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/[^0-9A-Z]/g, '');
+  }
+
+  async function licenseValid(raw) {
+    const s = normalizeLicense(raw);
+    if (s.length !== 17 || s.slice(0, 2) !== 'BC') return false;
+    const g1 = s.slice(2, 7), g2 = s.slice(7, 12), ck = s.slice(12, 17);
+    if (![...g1 + g2 + ck].every((c) => LICENSE_ALPHABET.includes(c))) return false;
+    try {
+      return (await licenseChecksum('BC-' + g1 + '-' + g2)) === ck;
+    } catch (e) {
+      return false; // crypto.subtle indisponible : on ne valide pas a l'aveugle
+    }
+  }
+
+  // Exige un code valide au premier lancement, puis le retient. N'est appelee
+  // que dans l'APK Android (presence de window.AndroidBridge).
+  async function requireLicense() {
+    const stored = await DB.metaGet('license', null);
+    if (stored && await licenseValid(stored)) return;
+
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.className = 'lock-screen';
+      ov.innerHTML = `<div class="lock-box">
+        <div class="lock-logo">🔑</div>
+        <h2>Activation</h2>
+        <p>Entrez votre code de licence pour utiliser l'application.</p>
+        <input id="lic-input" type="text" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="BC-XXXXX-XXXXX-XXXXX"
+               class="amount-input" style="text-align:center;font-size:18px">
+        <div id="lic-error" class="errorlist" hidden>Code invalide. Verifiez la saisie.</div>
+        <button class="btn btn-block" id="lic-btn">Activer</button></div>`;
+      document.body.appendChild(ov);
+      const input = ov.querySelector('#lic-input');
+      const err = ov.querySelector('#lic-error');
+      const btn = ov.querySelector('#lic-btn');
+      const attempt = async () => {
+        btn.disabled = true;
+        if (await licenseValid(input.value)) {
+          await DB.metaSet('license', normalizeLicense(input.value));
+          ov.remove();
+          resolve();
+        } else {
+          err.hidden = false; btn.disabled = false; input.select();
+        }
+      };
+      btn.addEventListener('click', attempt);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') attempt(); });
+    });
+  }
+
   // --- Verrou PIN (confort, non chiffrant) --------------------------------
 
   function hashPin(pin) {
@@ -1039,6 +1119,8 @@ const App = (function () {
     await DB.open();
     await Seed.bootstrap();
     await load();
+    // Code de licence : uniquement dans l'APK Android (pont natif present).
+    if (window.AndroidBridge) await requireLicense();
     await guardLock();
     window.addEventListener('hashchange', route);
     route();
@@ -1046,5 +1128,5 @@ const App = (function () {
 
   document.addEventListener('DOMContentLoaded', init);
 
-  return { State, go };
+  return { State, go, init };
 })();
