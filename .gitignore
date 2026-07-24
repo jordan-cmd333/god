@@ -13,3 +13,6 @@ mobile/android/*.idsig
 
 # Cle privee de signature des licences (NE JAMAIS COMMITTER)
 mobile/license-private-key.pem
+
+# Codes de licence emis (a ne pas publier)
+mobile/codes-*.txt

@@ -1143,5 +1143,5 @@ const App = (function () {
 
   document.addEventListener('DOMContentLoaded', init);
 
-  return { State, go, init };
+  return { State, go };
 })();
