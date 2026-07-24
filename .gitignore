@@ -10,3 +10,6 @@ mobile/android/build/
 mobile/android/debug.keystore
 mobile/android/*.apk
 mobile/android/*.idsig
+
+# Cle privee de signature des licences (NE JAMAIS COMMITTER)
+mobile/license-private-key.pem

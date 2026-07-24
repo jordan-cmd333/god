@@ -133,44 +133,59 @@ est valide, et aucun fichier JS ne contient d'appel réseau (`fetch`, `XHR`,
 ## Code de licence (Android uniquement)
 
 Au **premier lancement** de l'APK, l'application exige un **code de licence**
-avant toute utilisation. Une fois un code valide saisi, il est mémorisé
+avant toute utilisation. Une fois un code valide collé, il est mémorisé
 (IndexedDB) et n'est plus redemandé. La version iOS (PWA) et le navigateur ne
 sont **pas** concernés (le verrou ne s'active qu'en présence du pont natif
 Android).
 
-### Générer des codes à distribuer
+### Codes signés (cryptographie à clé publique)
+
+Les codes sont **signés** (ECDSA P-256 / SHA-256). L'application n'embarque que
+la **clé publique** ([`LICENSE_PUBLIC_JWK`](www/js/app.js)) ; les codes sont
+signés avec la **clé privée** que vous seul détenez. L'app vérifie la signature
+hors ligne. Conséquence forte : **personne ne peut fabriquer un code valide**
+sans la clé privée, même en lisant l'app ou ce dépôt public.
+
+Outil : [`mobile/license-sign.py`](license-sign.py) (dépend de `cryptography` —
+`pip install cryptography`).
 
 ```bash
-python3 mobile/license-keygen.py 20        # 20 codes distincts
-python3 mobile/license-keygen.py 20 > codes.txt
-python3 mobile/license-keygen.py --check BC-FW14K-TWFZ4-TTDQP   # vérifier un code
+# 1re fois : créer la paire de clés (écrit la clé privée, imprime la publique)
+python3 mobile/license-sign.py keygen
+
+# Émettre des codes à distribuer
+python3 mobile/license-sign.py issue 20
+python3 mobile/license-sign.py issue 20 > codes.txt
+
+# Vérifier un code
+python3 mobile/license-sign.py check <CODE>
 ```
 
-Format : `BC-XXXXX-XXXXX-CCCCC`. Le dernier groupe est une **somme de contrôle**
-(SHA-256 d'un secret partagé) que l'app recalcule hors ligne — c'est ainsi
-qu'elle valide un code **sans liste de codes** ni réseau. La saisie tolère les
-minuscules, les espaces et les confusions `O/0`, `I/L/1`.
+Un code fait ~92 caractères (base64url) : il se **copie-colle** (e-mail, message,
+QR), il ne se tape pas. L'écran d'activation est une zone de collage.
 
-### Ce que ce verrou vaut (et ne vaut pas)
+### La clé privée ne doit JAMAIS être dans le dépôt
 
-C'est un verrou **dissuasif contre le partage occasionnel**, pas une protection
-incassable. Comme l'app est **hors ligne**, l'algorithme et le secret sont
-présents dans l'app livrée — et, ce dépôt étant **public** (et la PWA aussi),
-ils sont directement lisibles dans [`mobile/www/js/app.js`](www/js/app.js)
-(`LICENSE_SECRET`). Une personne technique peut donc fabriquer des codes ou
-retirer l'écran. Pour un verrou réellement résistant, il faudrait des **codes
-signés** (l'app ne contient qu'une clé publique, vous seul signez les codes) —
-je peux le mettre en place si besoin.
+`keygen` écrit **`mobile/license-private-key.pem`**, déjà **ignoré par git**
+(voir `.gitignore`). C'est le cœur de la sécurité :
 
-### Invalider des codes fuités
+- **Sauvegardez ce fichier** en lieu sûr. Sans lui, vous ne pouvez plus émettre
+  de codes (il faudrait régénérer une paire et republier l'APK).
+- Ne le committez pas, ne le mettez pas en ligne. La clé **publique**
+  (`mobile/license-public-key.json` et dans `app.js`) peut, elle, être publique.
+- Pour émettre des codes depuis une autre machine, copiez-y ce fichier de façon
+  sécurisée.
 
-Changez `LICENSE_SECRET` **aux deux endroits** — dans
-[`mobile/www/js/app.js`](www/js/app.js) et dans
-[`mobile/license-keygen.py`](license-keygen.py) (valeurs identiques) — puis
-reconstruisez l'APK et régénérez des codes. Les anciens codes ne seront plus
-acceptés. (Astuce : garder le secret hors du dépôt public renforcerait la
-protection ; sur demande, je peux l'externaliser dans un fichier ignoré par
-git.)
+### Renouveler / invalider tous les codes
+
+Lancez `python3 mobile/license-sign.py keygen --force` (nouvelle paire), collez
+la nouvelle clé publique affichée dans `LICENSE_PUBLIC_JWK` de
+[`mobile/www/js/app.js`](www/js/app.js), reconstruisez l'APK et réémettez des
+codes. Tous les anciens codes cessent d'être acceptés.
+
+> Note : un bricoleur peut toujours **retirer l'écran** en modifiant le code de
+> l'app (c'est inhérent à une app hors ligne), mais il ne peut pas **émettre**
+> de codes valides. C'est la différence clé avec un simple mot de passe partagé.
 
 ## Écarts assumés par rapport à la version Django
 

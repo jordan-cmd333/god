@@ -905,44 +905,60 @@ const App = (function () {
     } catch (err) { flash('error', 'Fichier invalide.'); go('#/settings'); }
   }
 
-  // --- Activation par code de licence (Android uniquement) ----------------
+  // --- Activation par code de licence SIGNE (Android uniquement) ----------
   //
-  // Cle au format BC-XXXXX-XXXXX-CCCCC : les deux premiers groupes sont le
-  // numero de serie, le dernier une somme de controle derivee par SHA-256 d'un
-  // secret partage. L'app valide donc les cles hors ligne, sans lister toutes
-  // les cles valides. Limite assumee (option « cles generees ») : le secret
-  // etant present dans l'app, une personne technique peut le retrouver et
-  // fabriquer des cles. C'est un verrou dissuasif, pas une protection absolue.
-  // Le generateur associe : mobile/license-keygen.py (meme secret, meme algo).
+  // Modele a cle publique (ECDSA P-256 / SHA-256). L'app ne contient que la cle
+  // PUBLIQUE ci-dessous ; les codes sont signes avec la cle PRIVEE detenue par
+  // l'editeur (mobile/license-sign.py, cle hors du depot). Un code =
+  // base64url(identifiant 5 octets + signature 64 octets). L'app reconstruit le
+  // message signe (PREFIX + identifiant) et verifie la signature, hors ligne.
+  //
+  // Interet : personne ne peut fabriquer un code valide sans la cle privee,
+  // meme en lisant l'app ou ce depot public. (Un bricoleur peut toujours retirer
+  // l'ecran en modifiant le code — mais pas EMETTRE de codes valides.)
 
-  const LICENSE_SECRET = 'BudgetControl::licence::v1::7bQ9-kZ2r-Nf5T';
-  const LICENSE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // base32 (sans I L O U)
+  const LICENSE_PUBLIC_JWK = {"kty":"EC","crv":"P-256","x":"f4zRAm7g79Yvnf2wJhi3B30gQamzASfqZ4jzAoB0raA","y":"mVDdC4_KjNnG0vER4aBVt8JEkm9zP6fc44rKl5xqhn0"};
+  const LICENSE_PREFIX = new TextEncoder().encode('BudgetControl-license-v1|');
+  const LICENSE_ID_LEN = 5;
 
-  async function licenseChecksum(payload) {
-    const bytes = new Uint8Array(
-      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(LICENSE_SECRET + ':' + payload))
-    );
-    // 4 premiers octets -> entier 32 bits -> 25 bits de poids fort -> 5 caracteres.
-    const n = bytes[0] * 16777216 + bytes[1] * 65536 + bytes[2] * 256 + bytes[3];
-    const n25 = Math.floor(n / 128);
-    let out = '';
-    for (let i = 0; i < 5; i++) {
-      out += LICENSE_ALPHABET[Math.floor(n25 / Math.pow(2, 5 * (4 - i))) % 32];
+  let _licenseKeyPromise = null;
+  function licensePublicKey() {
+    if (!_licenseKeyPromise) {
+      _licenseKeyPromise = crypto.subtle.importKey(
+        'jwk', LICENSE_PUBLIC_JWK, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
+      );
     }
-    return out;
+    return _licenseKeyPromise;
+  }
+
+  function b64urlToBytes(raw) {
+    let s = (raw || '').replace(/\s+/g, '');            // retire espaces / retours ligne
+    s = s.replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/]/g, '');
+    s += '='.repeat((-s.length % 4 + 4) % 4);
+    try {
+      const bin = atob(s);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch (e) { return null; }
   }
 
   function normalizeLicense(raw) {
-    return (raw || '').toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/[^0-9A-Z]/g, '');
+    return (raw || '').replace(/\s+/g, '');
   }
 
   async function licenseValid(raw) {
-    const s = normalizeLicense(raw);
-    if (s.length !== 17 || s.slice(0, 2) !== 'BC') return false;
-    const g1 = s.slice(2, 7), g2 = s.slice(7, 12), ck = s.slice(12, 17);
-    if (![...g1 + g2 + ck].every((c) => LICENSE_ALPHABET.includes(c))) return false;
+    const bytes = b64urlToBytes(raw);
+    if (!bytes || bytes.length !== LICENSE_ID_LEN + 64) return false;
+    const ident = bytes.slice(0, LICENSE_ID_LEN);
+    const sig = bytes.slice(LICENSE_ID_LEN);
+    const msg = new Uint8Array(LICENSE_PREFIX.length + ident.length);
+    msg.set(LICENSE_PREFIX, 0);
+    msg.set(ident, LICENSE_PREFIX.length);
     try {
-      return (await licenseChecksum('BC-' + g1 + '-' + g2)) === ck;
+      return await crypto.subtle.verify(
+        { name: 'ECDSA', hash: 'SHA-256' }, await licensePublicKey(), sig, msg
+      );
     } catch (e) {
       return false; // crypto.subtle indisponible : on ne valide pas a l'aveugle
     }
@@ -960,12 +976,12 @@ const App = (function () {
       ov.innerHTML = `<div class="lock-box">
         <div class="lock-logo">🔑</div>
         <h2>Activation</h2>
-        <p>Entrez votre code de licence pour utiliser l'application.</p>
-        <input id="lic-input" type="text" autocomplete="off" autocapitalize="characters"
-               spellcheck="false" placeholder="BC-XXXXX-XXXXX-XXXXX"
-               class="amount-input" style="text-align:center;font-size:18px">
-        <div id="lic-error" class="errorlist" hidden>Code invalide. Verifiez la saisie.</div>
-        <button class="btn btn-block" id="lic-btn">Activer</button></div>`;
+        <p>Collez votre code de licence pour utiliser l'application.</p>
+        <textarea id="lic-input" rows="3" autocomplete="off" autocapitalize="off"
+                  autocorrect="off" spellcheck="false" placeholder="Collez le code ici"
+                  style="width:100%;font-family:monospace;font-size:13px;word-break:break-all"></textarea>
+        <div id="lic-error" class="errorlist" hidden>Code invalide. Verifiez le collage.</div>
+        <button class="btn btn-block" id="lic-btn" style="margin-top:12px">Activer</button></div>`;
       document.body.appendChild(ov);
       const input = ov.querySelector('#lic-input');
       const err = ov.querySelector('#lic-error');
@@ -981,7 +997,6 @@ const App = (function () {
         }
       };
       btn.addEventListener('click', attempt);
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') attempt(); });
     });
   }
 
