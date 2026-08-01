@@ -203,6 +203,30 @@ class IncomeTests(BaseCase):
         self.assertIsNone(solde['spent_ratio'])
         self.assertEqual(solde['balance'], Decimal('-5000'))
 
+    def test_le_reste_du_mois_passe_est_reporte(self):
+        # Le reste anterieur (100000 - 60000 = 40000) est reporte sur le mois.
+        last_month = date(2026, 6, 20)
+        self.earn('100000', when=last_month)
+        self.spend('60000', when=last_month)
+        self.earn('50000')   # ce mois
+        self.spend('20000')  # ce mois
+        solde = services.balance(self.user, services.period_bounds('month', self.today))
+        self.assertEqual(solde['carry_over'], Decimal('40000'))
+        self.assertEqual(solde['income'], Decimal('50000'))
+        self.assertEqual(solde['expense'], Decimal('20000'))
+        self.assertEqual(solde['available'], Decimal('70000'))
+        self.assertTrue(solde['is_positive'])
+
+    def test_un_deficit_reporte_rend_le_solde_negatif(self):
+        # Meme si le mois est positif, un report negatif peut rendre le solde negatif.
+        self.spend('80000', when=date(2026, 6, 10))  # reserves entamees le mois passe
+        self.earn('30000')
+        self.spend('10000')
+        solde = services.balance(self.user, services.period_bounds('month', self.today))
+        self.assertEqual(solde['carry_over'], Decimal('-80000'))
+        self.assertEqual(solde['available'], Decimal('-60000'))
+        self.assertFalse(solde['is_positive'])
+
     def test_gagner_plus_est_une_amelioration(self):
         # A l'inverse des depenses : pour un revenu, monter est bon signe.
         self.earn('100000', when=self.today - timedelta(days=1))
@@ -265,8 +289,10 @@ class IncomeTests(BaseCase):
         self.assertEqual(response.context['count'], 0)
 
     def test_le_tableau_de_bord_affiche_le_solde(self):
-        self.earn('100000')
-        self.spend('40000')
+        # Le tableau de bord utilise la date reelle : creer les donnees dessus.
+        now = services.today()
+        self.earn('100000', when=now)
+        self.spend('40000', when=now)
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(response.context['balance']['balance'], Decimal('60000'))
 
@@ -430,9 +456,11 @@ class OverspendAlertTests(BaseCase):
         self.assertEqual(self._overspend().count(), 0)
 
     def test_l_alerte_apparait_sur_le_tableau_de_bord(self):
+        # Le tableau de bord utilise la date reelle : creer les donnees dessus.
+        now = services.today()
         self.client.force_login(self.user)
-        self.earn('100000')
-        self.spend('130000')
+        self.earn('100000', when=now)
+        self.spend('130000', when=now)
         response = self.client.get(reverse('dashboard'))
         self.assertContains(response, 'Depenses superieures aux revenus')
 

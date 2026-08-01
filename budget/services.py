@@ -144,14 +144,30 @@ def top_source(user, period: Period):
     return rows[0] if rows else None
 
 
+def _sum_before(qs, start):
+    return qs.filter(date__lt=start).aggregate(t=Sum('amount'))['t'] or ZERO
+
+
 def balance(user, period: Period):
-    """Solde de la periode : ce qui rentre moins ce qui sort."""
+    """Solde de la periode, avec report du reste anterieur (continuite).
+
+    Le report est le cumul de tout l'historique avant le debut de la periode
+    (revenus - depenses). Le solde disponible = report + revenus - depenses de
+    la periode, ce qui assure la continuite d'un mois a l'autre.
+    """
     entrees, sorties = income_total(user, period), total_for(user, period)
+    carry_over = (
+        _sum_before(Income.objects.filter(user=user), period.start)
+        - _sum_before(Expense.objects.filter(user=user), period.start)
+    )
+    available = carry_over + entrees - sorties
     return {
         'income': entrees,
         'expense': sorties,
+        'carry_over': carry_over,
+        'available': available,
         'balance': entrees - sorties,
-        'is_positive': entrees >= sorties,
+        'is_positive': available >= 0,
         # Part des revenus deja depensee : au-dela de 100 %, on vit sur ses reserves.
         'spent_ratio': float(sorties) / float(entrees) * 100 if entrees else None,
         'period': period,

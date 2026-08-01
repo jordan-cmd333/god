@@ -4,6 +4,14 @@ Solde d'une periode : entrees, sorties, reste. Partage entre l'accueil et la
 page Revenus pour que les deux affichent exactement la meme chose.
 {% endcomment %}
 <div class="balance">
+  {% if balance.carry_over %}
+    <div class="balance-row">
+      <span class="balance-label"><span class="dot" style="background:var(--faint)"></span> Reste du mois passe</span>
+      <span class="balance-value {% if balance.carry_over < 0 %}up{% endif %}">
+        {% if balance.carry_over < 0 %}−{% endif %}{{ balance.carry_over|abs_value|money }}
+      </span>
+    </div>
+  {% endif %}
   <div class="balance-row">
     <span class="balance-label"><span class="dot" style="background:var(--success)"></span> Revenus</span>
     <span class="balance-value">{{ balance.income|money }}</span>
@@ -24,9 +32,9 @@ page Revenus pour que les deux affichent exactement la meme chose.
   {% endif %}
 
   <div class="balance-row balance-total">
-    <span class="balance-label">{% if balance.is_positive %}Reste{% else %}Deficit{% endif %}</span>
+    <span class="balance-label">{% if balance.is_positive %}Solde disponible{% else %}Solde negatif{% endif %}</span>
     <span class="balance-value {% if balance.is_positive %}down{% else %}up{% endif %}">
-      {{ balance.balance|abs_value|money }} {{ currency }}
+      {{ balance.available|abs_value|money }} {{ currency }}
     </span>
   </div>
 
@@ -34,11 +42,11 @@ page Revenus pour que les deux affichent exactement la meme chose.
     <div class="alert alert-exceeded" style="margin:10px 0 0">
       <span class="ico">⛔</span>
       <div>
-        Vous depensez plus que vous ne gagnez sur cette periode :
-        {{ balance.balance|abs_value|money }} {{ currency }} de plus.
+        Solde negatif : vos depenses depassent vos revenus et vos reserves de
+        {{ balance.available|abs_value|money }} {{ currency }}.
       </div>
     </div>
-  {% elif balance.income == 0 %}
+  {% elif balance.income == 0 and not balance.carry_over %}
     <div class="alert alert-info" style="margin:10px 0 0">
       <span class="ico">💡</span>
       <div>

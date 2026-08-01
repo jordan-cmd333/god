@@ -82,8 +82,11 @@ les mêmes chiffres.
 - Une comparaison sans période de référence n'affiche pas de pourcentage.
 - Pour un revenu, une hausse est une amélioration ; pour une dépense, c'est
   l'inverse — les flèches et les couleurs suivent cette logique.
-- Le solde d'une période vaut revenus − dépenses. Au-delà de 80 % des revenus
-  dépensés la barre passe à l'orange, au-delà de 100 % au rouge.
+- Le solde d'une période vaut revenus − dépenses, **avec report du reste**
+  antérieur (cumul de tout l'historique avant le début de la période) : le
+  solde disponible = report + revenus − dépenses, ce qui assure la continuité
+  d'un mois à l'autre. Au-delà de 80 % des revenus du mois dépensés la barre
+  passe à l'orange, au-delà de 100 % au rouge.
 - Un revenu récurrent encaissé plusieurs fois n'apparaît qu'une fois dans la
   liste des flux, à sa date la plus récente.
 
@@ -106,7 +109,7 @@ Variables d'environnement : `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`,
 ./venv/bin/python manage.py test budget
 ```
 
-64 tests couvrant les bornes de périodes, les agrégations (dépenses et
+66 tests couvrant les bornes de périodes, les agrégations (dépenses et
 revenus), les comparaisons, le déclenchement et la déduplication des alertes
 (limites et dépassement des revenus, avec cycle de vie complet), le calcul du
 solde, la génération des rapports, l'isolation des données entre comptes, les

@@ -150,12 +150,21 @@ const Services = (function () {
 
   // --- Solde --------------------------------------------------------------
 
+  function sumBefore(list, startISO) {
+    return sum(list.filter((r) => r.date < startISO), 'amount');
+  }
+
   function balance(expenses, incomes, period) {
     const inc = totalFor(incomes, period);
     const exp = totalFor(expenses, period);
+    // Report : ce qui restait disponible avant le debut de la periode (cumul de
+    // tout l'historique anterieur). Assure la continuite d'un mois a l'autre.
+    const carryOver = round2(sumBefore(incomes, period.start) - sumBefore(expenses, period.start));
+    const available = round2(carryOver + inc - exp);
     return {
-      income: inc, expense: exp, balance: round2(inc - exp),
-      isPositive: inc >= exp,
+      income: inc, expense: exp, carryOver, available,
+      balance: round2(inc - exp),
+      isPositive: available >= 0,
       spentRatio: inc ? (exp / inc) * 100 : null,
       period: period,
     };

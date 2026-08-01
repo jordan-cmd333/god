@@ -141,21 +141,24 @@ const App = (function () {
     if (ratio != null && ratio >= 100) barCls = 'is-exceeded';
     else if (ratio != null && ratio >= 80) barCls = 'is-warning';
     const barPct = ratio == null ? 0 : Math.min(Math.round(ratio), 100);
+    const carry = bal.carryOver || 0;
     let extra = '';
     if (!bal.isPositive) {
       extra = `<div class="alert alert-exceeded" style="margin:10px 0 0"><span class="ico">⛔</span>
-        <div>Vous depensez plus que vous ne gagnez : ${money(Math.abs(bal.balance))} ${cur()} de plus.</div></div>`;
-    } else if (bal.income === 0) {
+        <div>Solde negatif : vos depenses depassent vos revenus et vos reserves de ${money(Math.abs(bal.available))} ${cur()}.</div></div>`;
+    } else if (bal.income === 0 && carry === 0) {
       extra = `<div class="alert alert-info" style="margin:10px 0 0"><span class="ico">💡</span>
         <div>Aucun revenu sur la periode. <a href="#/income/new">Ajoutez vos rentrees</a> pour suivre votre solde.</div></div>`;
     }
+    const carryRow = carry !== 0 ? `<div class="balance-row"><span class="balance-label"><span class="dot" style="background:var(--faint)"></span> Reste du mois passe</span><span class="balance-value ${carry < 0 ? 'up' : ''}">${carry < 0 ? '−' : ''}${money(Math.abs(carry))}</span></div>` : '';
     return `<div class="balance">
+      ${carryRow}
       <div class="balance-row"><span class="balance-label"><span class="dot" style="background:var(--success)"></span> Revenus</span><span class="balance-value">${money(bal.income)}</span></div>
       <div class="balance-row"><span class="balance-label"><span class="dot" style="background:var(--danger)"></span> Depenses</span><span class="balance-value">−${money(bal.expense)}</span></div>
       ${ratio != null ? `<div class="bar ${barCls}" style="margin:10px 0 6px"><span style="width:${barPct}%"></span></div>
         <div class="limit-foot" style="margin-bottom:10px"><span>${Math.round(ratio)} % de vos revenus depenses</span></div>` : ''}
-      <div class="balance-row balance-total"><span class="balance-label">${bal.isPositive ? 'Reste' : 'Deficit'}</span>
-        <span class="balance-value ${bal.isPositive ? 'down' : 'up'}">${money(Math.abs(bal.balance))} ${cur()}</span></div>
+      <div class="balance-row balance-total"><span class="balance-label">${bal.isPositive ? 'Solde disponible' : 'Solde negatif'}</span>
+        <span class="balance-value ${bal.isPositive ? 'down' : 'up'}">${money(Math.abs(bal.available))} ${cur()}</span></div>
       ${extra}</div>`;
   }
 
