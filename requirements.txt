@@ -1,0 +1,10 @@
+# Dependances Python. Restauration apres panne :
+#   python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+#
+# Django + exports : version serveur (dossier budget/).
+Django==6.0.7
+openpyxl==3.1.5          # export Excel
+reportlab==5.0.0         # export PDF
+
+# Signature des licences (outils mobile/ et commerce/ license-sign.py).
+cryptography==49.0.0
