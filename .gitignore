@@ -16,3 +16,7 @@ mobile/license-private-key.pem
 
 # Codes de licence emis (a ne pas publier)
 mobile/codes-*.txt
+
+# Commerce Control : isole sur la branche "commerce", exclu du depot public.
+# (conserve sur le disque — dont la cle privee — mais jamais pousse depuis main)
+/commerce/
