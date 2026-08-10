@@ -216,6 +216,9 @@ const App = (function () {
     const day = summaries.day;
 
     let html = '';
+    if (trialLeft != null) html += `<div class="alert alert-info"><span class="ico">🎁</span>
+      <div>Version d'essai — <b>${trialLeft} jour${trialLeft > 1 ? 's' : ''}</b> restant${trialLeft > 1 ? 's' : ''}.
+      <a href="#" onclick="App.activate();return false">J'ai un code d'activation</a></div></div>`;
     unread.forEach((a) => html += alertBanner(a));
     if (unread.length) html += `<form data-action="alerts-read" style="margin-bottom:14px"><button class="btn btn-ghost btn-sm">Marquer les alertes comme lues</button></form>`;
 
@@ -969,9 +972,36 @@ const App = (function () {
 
   // Exige un code valide au premier lancement, puis le retient. N'est appelee
   // que dans l'APK Android (presence de window.AndroidBridge).
-  async function requireLicense() {
+  // --- Periode d'essai gratuite (3 mois) puis licence --------------------
+  // La date de debut est stockee sur l'appareil : essai dissuasif, comme le
+  // verrou lui-meme (une reinitialisation des donnees ou un recul de l'horloge
+  // relance l'essai — impossible a empecher sans serveur).
+  const TRIAL_MONTHS = 3;
+  let trialLeft = null; // jours d'essai restants (banniere), sinon null
+
+  function trialEndDate(startISO) {
+    const [y, m, d] = startISO.split('-').map(Number);
+    return new Date(y, m - 1 + TRIAL_MONTHS, d);
+  }
+
+  // Regle : licence a vie > essai gratuit en cours > exiger le code.
+  async function enforceLicense() {
     const stored = await DB.metaGet('license', null);
     if (stored && await licenseValid(stored)) return;
+    let start = await DB.metaGet('trialStart', null);
+    if (!start) { start = Services.todayISO(); await DB.metaSet('trialStart', start); }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const end = trialEndDate(start);
+    if (today < end) {
+      trialLeft = Math.max(0, Math.ceil((end - today) / 86400000));
+      return; // encore en essai gratuit
+    }
+    await requireLicense(true); // essai termine
+  }
+
+  async function requireLicense(trialEnded) {
+    const stored = await DB.metaGet('license', null);
+    if (stored && await licenseValid(stored)) { trialLeft = null; return; }
 
     return new Promise((resolve) => {
       const ov = document.createElement('div');
@@ -979,7 +1009,7 @@ const App = (function () {
       ov.innerHTML = `<div class="lock-box">
         <div class="lock-logo">🔑</div>
         <h2>Activation</h2>
-        <p>Collez votre code de licence pour utiliser l'application.</p>
+        <p>${trialEnded ? "Votre periode d'essai de 3 mois est terminee. " : ''}Collez votre code de licence pour ${trialEnded ? 'continuer' : "activer l'application"}.</p>
         <textarea id="lic-input" rows="3" autocomplete="off" autocapitalize="off"
                   autocorrect="off" spellcheck="false" placeholder="Collez le code ici"
                   style="width:100%;font-family:monospace;font-size:13px;word-break:break-all"></textarea>
@@ -993,6 +1023,7 @@ const App = (function () {
         btn.disabled = true;
         if (await licenseValid(input.value)) {
           await DB.metaSet('license', normalizeLicense(input.value));
+          trialLeft = null;
           ov.remove();
           resolve();
         } else {
@@ -1138,7 +1169,7 @@ const App = (function () {
     await Seed.bootstrap();
     await load();
     // Code de licence : uniquement dans l'APK Android (pont natif present).
-    if (window.AndroidBridge) await requireLicense();
+    if (window.AndroidBridge) await enforceLicense();
     await guardLock();
     window.addEventListener('hashchange', route);
     route();
@@ -1146,5 +1177,7 @@ const App = (function () {
 
   document.addEventListener('DOMContentLoaded', init);
 
-  return { State, go };
+  async function activate() { await requireLicense(false); go('#/'); }
+
+  return { State, go, activate };
 })();
