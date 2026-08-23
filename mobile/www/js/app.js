@@ -7,7 +7,7 @@
 const App = (function () {
   'use strict';
 
-  const State = { data: {}, currency: 'FCFA', threshold: 80 };
+  const State = { data: {}, currency: 'FCFA', threshold: 80, lastBackup: null, backupSnooze: null };
   const S = Services;
 
   const EXPENSE_METHODS = {
@@ -70,6 +70,8 @@ const App = (function () {
     State.data = d;
     State.currency = await DB.metaGet('currency', 'FCFA');
     State.threshold = await DB.metaGet('threshold', 80);
+    State.lastBackup = await DB.metaGet('lastBackup', null);
+    State.backupSnooze = await DB.metaGet('backupSnooze', null);
   }
 
   async function reevaluate(refISO) {
@@ -219,6 +221,7 @@ const App = (function () {
     if (trialLeft != null) html += `<div class="alert alert-info"><span class="ico">🎁</span>
       <div>Version d'essai — <b>${trialLeft} jour${trialLeft > 1 ? 's' : ''}</b> restant${trialLeft > 1 ? 's' : ''}.
       <a href="#" onclick="App.activate();return false">J'ai un code d'activation</a></div></div>`;
+    if (backupDue()) html += backupBanner();
     unread.forEach((a) => html += alertBanner(a));
     if (unread.length) html += `<form data-action="alerts-read" style="margin-bottom:14px"><button class="btn btn-ghost btn-sm">Marquer les alertes comme lues</button></form>`;
 
@@ -281,6 +284,14 @@ const App = (function () {
       for (const a of State.data.alerts.filter((x) => !x.read)) await DB.put('alerts', { ...a, read: true });
       State.data.alerts = await DB.all('alerts');
       go('#/');
+    });
+    const bn = root.querySelector('[data-action="backup-now"]');
+    if (bn) bn.addEventListener('click', async () => { await shareBackup(); go('#/'); });
+    const bs = root.querySelector('[data-action="backup-snooze"]');
+    if (bs) bs.addEventListener('click', async () => {
+      const until = new Date(Date.now() + 7 * 86400000).toISOString();
+      await DB.metaSet('backupSnooze', until); State.backupSnooze = until;
+      flash('info', 'Rappel reporte de 7 jours.'); go('#/');
     });
   }
 
@@ -813,10 +824,12 @@ const App = (function () {
         <div class="stat"><div class="k">Categories</div><div class="v">${stats.categories}</div></div>
         <div class="stat"><div class="k">Limites</div><div class="v">${stats.limits}</div></div></div></div>
 
-      <div class="card"><h2 class="card-title">Sauvegarde locale</h2>
-        <p class="helptext" style="margin-bottom:12px">Export/import JSON de toutes vos donnees, sans reseau.</p>
-        <div class="btn-row"><button class="btn btn-ghost" data-backup>Exporter (JSON)</button>
-          <button class="btn btn-ghost" data-restore>Importer</button></div>
+      <div class="card"><h2 class="card-title">Sauvegarde</h2>
+        <p class="helptext" style="margin-bottom:10px">Vos donnees ne sont enregistrees que sur cet appareil. Sauvegardez-les regulierement (Drive, WhatsApp, e-mail...) pour pouvoir les restaurer si vous perdez ou changez de telephone.</p>
+        <p class="helptext" style="margin-bottom:12px"><b>${State.lastBackup ? `Derniere sauvegarde : ${relLabel(State.lastBackup)}` : 'Aucune sauvegarde effectuee pour le moment.'}</b></p>
+        <div class="btn-row"><button class="btn" data-share>Sauvegarder et partager</button>
+          <button class="btn btn-ghost" data-backup>Exporter le fichier</button>
+          <button class="btn btn-ghost" data-restore>Restaurer</button></div>
         <input type="file" accept="application/json" data-restore-file hidden></div>
 
       <div class="card"><h2 class="card-title">Demonstration</h2>
@@ -838,7 +851,8 @@ const App = (function () {
           await DB.metaSet('pin', pin ? hashPin(pin) : null);
           flash('success', pin ? 'Verrou active.' : 'Verrou retire.'); go('#/settings');
         });
-        root.querySelector('[data-backup]').addEventListener('click', backupJSON);
+        root.querySelector('[data-share]').addEventListener('click', async () => { await shareBackup(); go('#/settings'); });
+        root.querySelector('[data-backup]').addEventListener('click', async () => { await backupJSON(); go('#/settings'); });
         root.querySelector('[data-restore]').addEventListener('click', () => root.querySelector('[data-restore-file]').click());
         root.querySelector('[data-restore-file]').addEventListener('change', restoreJSON);
         root.querySelector('[data-seed-demo]').addEventListener('click', async () => {
@@ -891,10 +905,81 @@ const App = (function () {
     download(`budget-control_${store}_${S.todayISO()}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   }
 
-  async function backupJSON() {
+  async function buildBackup() {
     const dump = { version: 1, exportedAt: new Date().toISOString(), meta: { currency: State.currency, threshold: State.threshold } };
     for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts']) dump[s] = await DB.all(s);
-    download(`budget-control_sauvegarde_${S.todayISO()}.json`, JSON.stringify(dump, null, 2), 'application/json');
+    return dump;
+  }
+
+  function backupName() { return `budget-control_sauvegarde_${S.todayISO()}.json`; }
+
+  // Enregistre l'instant de sauvegarde et lève le rappel (et l'eventuel report).
+  async function markBackupDone() {
+    const now = new Date().toISOString();
+    await DB.metaSet('lastBackup', now); State.lastBackup = now;
+    if (State.backupSnooze) { await DB.metaSet('backupSnooze', null); State.backupSnooze = null; }
+  }
+
+  // "Exporter (JSON)" : enregistre le fichier (APK -> selecteur systeme, navigateur -> telechargement).
+  async function backupJSON() {
+    download(backupName(), JSON.stringify(await buildBackup(), null, 2), 'application/json');
+    await markBackupDone();
+    flash('success', 'Sauvegarde enregistree.');
+  }
+
+  // "Sauvegarder et partager" : ouvre le partage systeme quand il existe
+  // (mobile / PWA -> WhatsApp, Drive, mail...), sinon repli sur l'enregistrement.
+  async function shareBackup() {
+    const text = JSON.stringify(await buildBackup(), null, 2);
+    const name = backupName();
+    try {
+      if (navigator.canShare) {
+        const file = new File([text], name, { type: 'application/json' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Sauvegarde Budget Control' });
+          await markBackupDone();
+          flash('success', 'Sauvegarde partagee.');
+          return;
+        }
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // partage annule : ne pas retomber sur le telechargement
+    }
+    download(name, text, 'application/json'); // repli : enregistrement local / selecteur systeme
+    await markBackupDone();
+    flash('success', 'Sauvegarde enregistree.');
+  }
+
+  // --- Rappel anti-perte de donnees ---------------------------------------
+  // Les donnees vivent uniquement sur cet appareil : on invite a sauvegarder
+  // quand il y a de quoi perdre et que la derniere sauvegarde date (ou jamais).
+  function daysSince(iso) { return iso ? Math.floor((Date.now() - Date.parse(iso)) / 86400000) : Infinity; }
+  function relLabel(iso) { const dd = daysSince(iso); return dd <= 0 ? "aujourd'hui" : dd === 1 ? 'hier' : `il y a ${dd} jours`; }
+
+  const BACKUP_MIN_RECORDS = 5;   // pas de rappel tant qu'il y a peu a perdre
+  const BACKUP_MAX_AGE_DAYS = 14; // au-dela, on re-propose si de nouvelles donnees existent
+
+  function backupDue() {
+    const n = State.data.expenses.length + State.data.incomes.length;
+    if (n < BACKUP_MIN_RECORDS) return false;
+    if (State.backupSnooze && Date.parse(State.backupSnooze) > Date.now()) return false;
+    if (!State.lastBackup) return true;                 // jamais sauvegarde
+    if (daysSince(State.lastBackup) < BACKUP_MAX_AGE_DAYS) return false;
+    const t = Date.parse(State.lastBackup);             // nouvelles donnees depuis la derniere sauvegarde ?
+    return State.data.expenses.some((e) => (e.createdAt || 0) > t)
+        || State.data.incomes.some((i) => (i.createdAt || 0) > t);
+  }
+
+  function backupBanner() {
+    const detail = State.lastBackup
+      ? `Derniere sauvegarde ${relLabel(State.lastBackup)}, et de nouvelles donnees ne le sont pas encore.`
+      : "Vos donnees ne sont enregistrees que sur cet appareil.";
+    return `<div class="alert alert-warning" style="margin-bottom:14px"><span class="ico">🛟</span>
+      <div><b>Pensez a sauvegarder.</b> ${detail}
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-sm" data-action="backup-now">Sauvegarder maintenant</button>
+        <button class="btn btn-ghost btn-sm" data-action="backup-snooze">Plus tard</button>
+      </div></div></div>`;
   }
 
   async function restoreJSON(e) {
@@ -902,11 +987,14 @@ const App = (function () {
     if (!await confirmModal('Remplacer toutes les donnees actuelles par cette sauvegarde ?')) { e.target.value = ''; return; }
     try {
       const dump = JSON.parse(await file.text());
-      await DB.clearAll();
+      await DB.clearData(); // remplace les donnees, mais conserve licence / PIN / essai (store meta)
       for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts']) {
         if (Array.isArray(dump[s])) await DB.bulkAdd(s, dump[s]);
       }
       if (dump.meta) { await DB.metaSet('currency', dump.meta.currency || 'FCFA'); await DB.metaSet('threshold', dump.meta.threshold || 80); }
+      // Les donnees correspondent desormais a cette sauvegarde : on date le rappel en consequence.
+      if (dump.exportedAt) await DB.metaSet('lastBackup', dump.exportedAt);
+      await DB.metaSet('backupSnooze', null);
       await load(); flash('success', 'Sauvegarde importee.'); go('#/');
     } catch (err) { flash('error', 'Fichier invalide.'); go('#/settings'); }
   }
@@ -1066,7 +1154,7 @@ const App = (function () {
   // --- Donnees de demonstration -------------------------------------------
 
   async function seedDemo() {
-    await DB.clearAll();
+    await DB.clearData(); // conserve licence / PIN / essai
     await Seed.bootstrap();
     const cats = await DB.all('categories'); const srcs = await DB.all('sources');
     const catBy = {}; cats.forEach((c) => catBy[c.name] = c.id);

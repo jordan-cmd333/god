@@ -84,15 +84,22 @@ const DB = (function () {
     });
   }
 
-  async function clearAll() {
+  async function clearStores(stores) {
     await open();
     return new Promise((resolve, reject) => {
-      const t = db.transaction(STORES, 'readwrite');
-      for (const s of STORES) t.objectStore(s).clear();
+      const t = db.transaction(stores, 'readwrite');
+      for (const s of stores) t.objectStore(s).clear();
       t.oncomplete = () => resolve();
       t.onerror = () => reject(t.error);
     });
   }
+
+  // Efface tout, y compris meta (licence, PIN, essai). A reserver a une remise a zero.
+  function clearAll() { return clearStores(STORES); }
+
+  // Efface uniquement les donnees, en preservant meta : utilise a la restauration
+  // pour ne pas perdre la licence/l'essai/le PIN de l'appareil.
+  function clearData() { return clearStores(STORES.filter((s) => s !== 'meta')); }
 
   // --- Meta (profil, code PIN) : simple cle -> valeur ---
   async function metaGet(key, fallback) {
@@ -103,5 +110,5 @@ const DB = (function () {
     return put('meta', { key, value });
   }
 
-  return { open, all, get, put, add, remove, bulkAdd, clearAll, metaGet, metaSet };
+  return { open, all, get, put, add, remove, bulkAdd, clearAll, clearData, metaGet, metaSet };
 })();
