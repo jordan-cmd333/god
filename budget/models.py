@@ -19,6 +19,10 @@ class Profile(models.Model):
         "seuil d'alerte (%)", default=80,
         help_text="Pourcentage d'une limite a partir duquel une alerte est levee.",
     )
+    last_backup = models.DateTimeField(
+        'derniere sauvegarde', null=True, blank=True,
+        help_text='Horodatage du dernier export complet des donnees.',
+    )
 
     def __str__(self):
         return f'Profil de {self.user}'

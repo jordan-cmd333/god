@@ -50,6 +50,11 @@ urlpatterns = [
     path('rapports/export/excel/', views.export_excel, name='export_excel'),
     path('rapports/export/pdf/', views.export_pdf, name='export_pdf'),
 
+    # Sauvegarde complete (anti-perte)
+    path('sauvegarde/export/', views.export_backup, name='export_backup'),
+    path('sauvegarde/import/', views.import_backup, name='import_backup'),
+    path('sauvegarde/rappel-plus-tard/', views.backup_snooze, name='backup_snooze'),
+
     # Parametres et API
     path('parametres/', views.settings_view, name='settings'),
     path('api/resume/', views.api_summary, name='api_summary'),

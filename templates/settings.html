@@ -76,7 +76,31 @@
 </div>
 
 <div class="card">
-  <h2 class="card-title">Exporter mes donnees</h2>
+  <h2 class="card-title">Sauvegarde complete</h2>
+  <p class="helptext" style="margin-bottom:10px">
+    Telechargez une copie de toutes vos donnees (preferences, categories, sources,
+    depenses, revenus, limites) pour pouvoir les restaurer en cas de panne ou de
+    changement d'appareil. La restauration remplace les donnees de votre compte.
+  </p>
+  <p class="helptext" style="margin-bottom:12px">
+    <b>{% if last_backup %}Derniere sauvegarde : {{ last_backup|date:'d/m/Y H:i' }}{% else %}Aucune sauvegarde effectuee pour le moment.{% endif %}</b>
+  </p>
+  <div class="btn-row" style="margin-bottom:12px">
+    <a class="btn" href="{% url 'export_backup' %}">💾 Sauvegarder (JSON)</a>
+  </div>
+  <form method="post" action="{% url 'import_backup' %}" enctype="multipart/form-data"
+        onsubmit="return confirm('Remplacer toutes les donnees actuelles de votre compte par cette sauvegarde ?');">
+    {% csrf_token %}
+    <div class="field">
+      <label for="id_backup">Restaurer depuis un fichier</label>
+      <input type="file" name="backup" id="id_backup" accept="application/json,.json" required>
+    </div>
+    <button class="btn btn-ghost btn-block">Restaurer</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 class="card-title">Exporter (rapports)</h2>
   <div class="btn-row">
     <a class="btn btn-ghost" href="{% url 'export_excel' %}">📊 Tout en Excel</a>
     <a class="btn btn-ghost" href="{% url 'export_pdf' %}?kind=year">📄 Rapport PDF</a>

@@ -7,6 +7,28 @@
 
 {% block content %}
 
+{# ------------------------------------------------ Rappel de sauvegarde #}
+{% if backup_due %}
+  <div class="alert alert-warning" style="margin-bottom:14px">
+    <span class="ico">🛟</span>
+    <div>
+      <b>Pensez a sauvegarder.</b>
+      {% if backup_last %}
+        Derniere sauvegarde le {{ backup_last|date:'d/m/Y' }}, et de nouvelles donnees ne le sont pas encore.
+      {% else %}
+        Exportez une copie de vos donnees pour ne rien perdre en cas de panne.
+      {% endif %}
+      <div class="btn-row" style="margin-top:10px">
+        <a class="btn btn-sm" href="{% url 'export_backup' %}">Sauvegarder maintenant</a>
+        <form method="post" action="{% url 'backup_snooze' %}" style="display:inline">
+          {% csrf_token %}
+          <button class="btn btn-ghost btn-sm">Plus tard</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 {# ---------------------------------------------------- Alertes en cours #}
 {% for alert in unread_alerts %}
   <div class="alert {% if alert.level == 'exceeded' %}alert-exceeded{% else %}alert-warning{% endif %}">

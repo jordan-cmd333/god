@@ -1,6 +1,7 @@
 """Vues de Budget Control. La logique de calcul vit dans services.py."""
 
 import json
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import messages
@@ -9,9 +10,10 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, ProtectedError, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from . import exports, services
+from . import backup, exports, services
 from .forms import (
     BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm, IncomeFilterForm,
     IncomeForm, IncomeSourceForm, ProfileForm, SignUpForm,
@@ -51,6 +53,11 @@ def dashboard(request):
     ])
     context['chart_timeline'] = json.dumps(context['timeline'])
     context['quick_form'] = ExpenseForm(user=request.user)
+    profile = getattr(request.user, 'profile', None)
+    snooze = request.session.get('backup_snooze_until')
+    snoozed = bool(snooze and snooze > timezone.now().isoformat())
+    context['backup_due'] = (not snoozed) and backup.is_backup_due(request.user)
+    context['backup_last'] = profile.last_backup if profile else None
     return render(request, 'dashboard.html', context)
 
 
@@ -488,6 +495,58 @@ def export_pdf(request):
 
 
 # --------------------------------------------------------------------------
+# Sauvegarde complete (anti-perte de donnees)
+# --------------------------------------------------------------------------
+
+@login_required
+def export_backup(request):
+    """Telecharge l'integralite des donnees du compte en JSON."""
+    payload = backup.export_payload(request.user)
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    profile.last_backup = timezone.now()
+    profile.save(update_fields=['last_backup'])
+    request.session.pop('backup_snooze_until', None)
+    stamp = timezone.localtime().strftime('%Y-%m-%d')
+    response = JsonResponse(payload, json_dumps_params={'ensure_ascii': False, 'indent': 2})
+    response['Content-Disposition'] = (
+        f'attachment; filename="budget-control_sauvegarde_{request.user.username}_{stamp}.json"'
+    )
+    return response
+
+
+@login_required
+@require_POST
+def import_backup(request):
+    """Remplace les donnees du compte par une sauvegarde importee."""
+    file = request.FILES.get('backup')
+    if not file:
+        messages.error(request, 'Aucun fichier fourni.')
+        return redirect('settings')
+    try:
+        data = json.load(file)
+        backup.import_payload(request.user, data)
+    except Exception:
+        # import_payload est transactionnel : en cas d'erreur, rien n'est modifie.
+        messages.error(request, 'Fichier de sauvegarde invalide : rien n a ete modifie.')
+        return redirect('settings')
+    # Regenere alertes et rapports a partir des donnees restaurees.
+    services.evaluate_alerts(request.user, services.today())
+    services.refresh_reports(request.user, services.today())
+    messages.success(request, 'Sauvegarde importee : vos donnees ont ete restaurees.')
+    return redirect('dashboard')
+
+
+@login_required
+@require_POST
+def backup_snooze(request):
+    """Reporte le rappel de sauvegarde de 7 jours (pour cette session)."""
+    request.session['backup_snooze_until'] = (
+        timezone.now() + timedelta(days=7)
+    ).isoformat()
+    return redirect('dashboard')
+
+
+# --------------------------------------------------------------------------
 # Parametres
 # --------------------------------------------------------------------------
 
@@ -502,6 +561,7 @@ def settings_view(request):
     return render(request, 'settings.html', {
         'form': form,
         'profile': profile,
+        'last_backup': profile.last_backup,
         'stats': {
             'expenses': Expense.objects.filter(user=request.user).count(),
             'categories': Category.objects.filter(user=request.user).count(),

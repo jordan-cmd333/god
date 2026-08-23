@@ -1,9 +1,11 @@
 """Tests des regles de gestion et des vues principales."""
 
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
@@ -590,3 +592,104 @@ class ViewTests(BaseCase):
         self.assertRedirects(response, reverse('dashboard'))
         charlie = User.objects.get(username='charlie')
         self.assertEqual(Category.objects.filter(user=charlie).count(), 11)
+
+
+class BackupTests(BaseCase):
+    """Sauvegarde complete : export JSON, restauration, rappel anti-perte."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+        self.salaire = IncomeSource.objects.get(user=self.user, name='Salaire')
+
+    def _earn(self, amount, when=None):
+        return Income.objects.create(
+            user=self.user, source=self.salaire,
+            amount=Decimal(amount), date=when or self.today,
+        )
+
+    def test_export_renvoie_du_json_et_date_la_sauvegarde(self):
+        self.spend('1500')
+        response = self.client.get(reverse('export_backup'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('application/json', response['Content-Type'])
+        payload = json.loads(response.content)
+        self.assertEqual(payload['version'], 1)
+        self.assertTrue(any(c['name'] == 'Nourriture' for c in payload['categories']))
+        self.assertEqual(len(payload['expenses']), 1)
+        self.user.profile.refresh_from_db()
+        self.assertIsNotNone(self.user.profile.last_backup)
+
+    def test_aller_retour_restaure_les_donnees(self):
+        self.spend('1000', category=self.food)
+        self._earn('50000')
+        BudgetLimit.objects.create(user=self.user, period='month', amount=Decimal('30000'))
+        profile = self.user.profile
+        profile.currency = 'EUR'
+        profile.save()
+
+        content = self.client.get(reverse('export_backup')).content
+
+        # Modification apres la sauvegarde : doit disparaitre a la restauration.
+        self.spend('9999', category=self.transport)
+        self.assertEqual(Expense.objects.filter(user=self.user).count(), 2)
+
+        upload = SimpleUploadedFile('save.json', content, content_type='application/json')
+        response = self.client.post(reverse('import_backup'), {'backup': upload})
+        self.assertRedirects(response, reverse('dashboard'))
+
+        self.assertEqual(Expense.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Expense.objects.get(user=self.user).amount, Decimal('1000'))
+        self.assertEqual(Income.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(BudgetLimit.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Category.objects.filter(user=self.user).count(), 11)
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.currency, 'EUR')
+
+    def test_la_restauration_reste_isolee_par_utilisateur(self):
+        bob = User.objects.create_user('bob', password='motdepasse-123')
+        Expense.objects.create(
+            user=bob, category=Category.objects.get(user=bob, name='Sante'),
+            amount=Decimal('777'), date=self.today,
+        )
+        self.spend('1000')
+        content = self.client.get(reverse('export_backup')).content
+        upload = SimpleUploadedFile('save.json', content, content_type='application/json')
+        self.client.post(reverse('import_backup'), {'backup': upload})
+
+        self.assertEqual(Expense.objects.filter(user=bob).count(), 1)
+        self.assertEqual(Category.objects.filter(user=bob).count(), 11)
+
+    def test_import_invalide_ne_modifie_rien(self):
+        self.spend('1000')
+        bad = SimpleUploadedFile('bad.json', b'ceci n est pas du json',
+                                 content_type='application/json')
+        response = self.client.post(reverse('import_backup'), {'backup': bad}, follow=True)
+        self.assertEqual(Expense.objects.filter(user=self.user).count(), 1)
+        self.assertTrue(any('invalide' in str(m) for m in response.context['messages']))
+
+    def test_le_rappel_apparait_avec_des_donnees_non_sauvegardees(self):
+        for i in range(5):
+            self.spend('100', when=self.today - timedelta(days=i))
+        response = self.client.get(reverse('dashboard'))
+        self.assertTrue(response.context['backup_due'])
+        self.assertContains(response, 'Pensez a sauvegarder')
+
+    def test_le_rappel_disparait_apres_sauvegarde(self):
+        for i in range(5):
+            self.spend('100', when=self.today - timedelta(days=i))
+        self.client.get(reverse('export_backup'))
+        self.assertFalse(self.client.get(reverse('dashboard')).context['backup_due'])
+
+    def test_plus_tard_reporte_le_rappel(self):
+        for i in range(5):
+            self.spend('100', when=self.today - timedelta(days=i))
+        self.assertTrue(self.client.get(reverse('dashboard')).context['backup_due'])
+        self.client.post(reverse('backup_snooze'))
+        self.assertFalse(self.client.get(reverse('dashboard')).context['backup_due'])
+
+    def test_les_vues_de_sauvegarde_exigent_une_connexion(self):
+        self.client.logout()
+        response = self.client.get(reverse('export_backup'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/connexion/', response['Location'])
