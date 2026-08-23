@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Budget Control</string>
+    <string name="sc_expense_short">Depense</string>
+    <string name="sc_expense_long">Nouvelle depense</string>
+    <string name="sc_income_short">Revenu</string>
+    <string name="sc_income_long">Nouveau revenu</string>
 </resources>

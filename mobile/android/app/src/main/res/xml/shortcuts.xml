@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Raccourcis « ecran d'accueil » (appui long sur l'icone, API 25+).
+  Chaque raccourci lance MainActivity avec un URI budgetcontrol://... que
+  l'activite traduit en hash de route pour ouvrir directement le formulaire.
+  Sur API < 25, ces raccourcis sont simplement ignores (aucun effet).
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_expense"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/sc_expense_short"
+        android:shortcutLongLabel="@string/sc_expense_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.budgetcontrol.app"
+            android:targetClass="com.budgetcontrol.app.MainActivity"
+            android:data="budgetcontrol://expense/new" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_income"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/sc_income_short"
+        android:shortcutLongLabel="@string/sc_income_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.budgetcontrol.app"
+            android:targetClass="com.budgetcontrol.app.MainActivity"
+            android:data="budgetcontrol://income/new" />
+    </shortcut>
+</shortcuts>

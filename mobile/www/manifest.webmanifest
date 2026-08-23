@@ -14,5 +14,21 @@
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nouvelle depense",
+      "short_name": "Depense",
+      "description": "Enregistrer une depense en quelques secondes",
+      "url": "./index.html#/expense/new",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Nouveau revenu",
+      "short_name": "Revenu",
+      "description": "Enregistrer une rentree d'argent",
+      "url": "./index.html#/income/new",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

@@ -56,7 +56,35 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new AppChromeClient(this));
         web.addJavascriptInterface(new AndroidBridge(this), "AndroidBridge");
         setContentView(web);
-        web.loadUrl(BASE + "index.html");
+        web.loadUrl(BASE + "index.html" + routeFromIntent(getIntent()));
+    }
+
+    /**
+     * Raccourci « ecran d'accueil » sur une activite deja ouverte (singleTop) :
+     * on route la WebView vers le formulaire sans recharger l'application.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String route = routeFromIntent(intent);
+        if (web != null && !route.isEmpty()) {
+            web.evaluateJavascript("location.hash='" + route + "';", null);
+        }
+    }
+
+    /**
+     * Traduit l'URI d'un raccourci (budgetcontrol://expense/new) en hash de
+     * route (#/expense/new). Retourne "" pour un lancement normal.
+     */
+    private String routeFromIntent(Intent intent) {
+        if (intent == null) return "";
+        Uri data = intent.getData();
+        if (data == null || !"budgetcontrol".equals(data.getScheme())) return "";
+        String host = data.getHost();
+        if (host == null) return "";
+        String path = data.getPath();
+        return "#/" + host + (path != null ? path : "");
     }
 
     /** Le bouton retour navigue dans l'historique interne avant de quitter. */
