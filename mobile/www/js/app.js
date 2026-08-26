@@ -64,7 +64,7 @@ const App = (function () {
 
   async function load() {
     const d = {};
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts']) {
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences']) {
       d[s] = await DB.all(s);
     }
     State.data = d;
@@ -240,6 +240,13 @@ const App = (function () {
       <a href="#/expense/new" class="btn">＋ Depense</a>
       <a href="#/income/new" class="btn btn-income">＋ Revenu</a></div>`;
 
+    const dueRecs = S.dueRecurrences(d.recurrences, ref);
+    if (dueRecs.length) {
+      html += `<div class="card"><h2 class="card-title">A confirmer <a href="#/recurrences">Gerer</a></h2>`;
+      dueRecs.forEach((r) => html += dueRecurRow(r));
+      html += `</div>`;
+    }
+
     html += `<div class="card"><h2 class="card-title">Solde du mois <a href="#/incomes">Detail des revenus</a></h2>${balanceCard(bal)}</div>`;
 
     html += `<div class="card"><h2 class="card-title">Limites budgetaires <a href="#/budgets">Gerer</a></h2>`;
@@ -293,6 +300,7 @@ const App = (function () {
       await DB.metaSet('backupSnooze', until); State.backupSnooze = until;
       flash('info', 'Rappel reporte de 7 jours.'); go('#/');
     });
+    wireRecurActions(root, '#/');
   }
 
   function limitRow(st, withActions) {
@@ -448,6 +456,219 @@ const App = (function () {
       }),
     };
   };
+
+  // Transactions recurrentes -----------------------------------------------
+  // Rien n'est cree en silence : a l'echeance (nextDue <= aujourd'hui), la
+  // recurrence est proposee « a confirmer ». Confirmer cree l'ecriture et
+  // avance l'echeance ; passer avance sans rien creer.
+
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  function recurRef(rec) { return rec.kind === 'income' ? src(rec.refId) : cat(rec.refId); }
+
+  async function advanceRecurrenceDB(rec, fromDate) {
+    const next = S.advanceOccurrence(rec.nextDue, rec.frequency, S.anchorDayOf(rec));
+    await DB.put('recurrences', { ...rec, nextDue: next, lastRun: fromDate });
+    State.data.recurrences = await DB.all('recurrences');
+  }
+
+  async function confirmRecurrence(rec) {
+    const date = rec.nextDue;
+    if (rec.kind === 'income') {
+      await DB.add('incomes', { amount: rec.amount, sourceId: rec.refId, description: rec.description || '', date, method: rec.method, recurring: true, note: rec.note || '', createdAt: Date.now() });
+      State.data.incomes = await DB.all('incomes');
+    } else {
+      await DB.add('expenses', { amount: rec.amount, categoryId: rec.refId, description: rec.description || '', date, method: rec.method, note: rec.note || '', createdAt: Date.now() });
+      State.data.expenses = await DB.all('expenses');
+    }
+    await advanceRecurrenceDB(rec, date);
+    await reevaluate(date);
+  }
+
+  function dueRecurRow(rec) {
+    const ref = recurRef(rec);
+    const isIncome = rec.kind === 'income';
+    return `<div class="limit">
+      <div class="limit-head">
+        <span class="limit-name"><span class="dot" style="background:${ref.color}"></span>${esc(rec.description || ref.name)}
+          <span class="limit-period">· ${S.FREQ_LABELS[rec.frequency]} · echeance ${fmtDate(rec.nextDue)}</span></span>
+        <span class="limit-amounts"><b>${isIncome ? '+' : '−'}${money(rec.amount)}</b></span>
+      </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-sm ${isIncome ? 'btn-income' : ''}" data-rec-confirm="${rec.id}">Confirmer</button>
+        <button class="btn btn-ghost btn-sm" data-rec-skip="${rec.id}">Passer</button>
+      </div>
+    </div>`;
+  }
+
+  function wireRecurActions(root, backHash) {
+    root.querySelectorAll('[data-rec-confirm]').forEach((b) => b.addEventListener('click', async () => {
+      const rec = State.data.recurrences.find((r) => r.id === Number(b.getAttribute('data-rec-confirm')));
+      if (!rec) return;
+      await confirmRecurrence(rec);
+      flash('success', `${rec.kind === 'income' ? 'Revenu' : 'Depense'} de ${money(rec.amount)} ajoute${rec.kind === 'income' ? '' : 'e'}.`);
+      go(backHash);
+    }));
+    root.querySelectorAll('[data-rec-skip]').forEach((b) => b.addEventListener('click', async () => {
+      const rec = State.data.recurrences.find((r) => r.id === Number(b.getAttribute('data-rec-skip')));
+      if (!rec) return;
+      await advanceRecurrenceDB(rec, rec.nextDue);
+      flash('info', 'Echeance passee.'); go(backHash);
+    }));
+  }
+
+  Views.recurrences = async function () {
+    const list = State.data.recurrences.slice().sort((a, b) => (a.nextDue < b.nextDue ? -1 : a.nextDue > b.nextDue ? 1 : 0));
+    const due = S.dueRecurrences(State.data.recurrences);
+    let html = `<div class="btn-row" style="margin-bottom:16px">
+      <a href="#/recurrence/new?kind=expense" class="btn">＋ Depense</a>
+      <a href="#/recurrence/new?kind=income" class="btn btn-income">＋ Revenu</a></div>`;
+    if (due.length) {
+      html += `<div class="card"><h2 class="card-title">A confirmer</h2>`;
+      due.forEach((r) => html += dueRecurRow(r));
+      html += `</div>`;
+    }
+    html += `<div class="card"><h2 class="card-title">Mes recurrences</h2>`;
+    if (list.length) {
+      html += `<ul class="list">`;
+      list.forEach((rec) => {
+        const ref = recurRef(rec);
+        const isIncome = rec.kind === 'income';
+        const inactive = !rec.active;
+        html += `<li class="row"${inactive ? ' style="opacity:.55"' : ''}>
+          <span class="row-icon" style="background:${ref.color}">${icon(ref.icon)}</span>
+          <span class="row-main"><span class="t">${esc(rec.description || ref.name)}</span>
+            <span class="s">${S.FREQ_LABELS[rec.frequency]} · ${isIncome ? 'revenu' : 'depense'} · prochaine ${fmtDate(rec.nextDue)}${rec.endDate ? ` · jusqu'au ${fmtDate(rec.endDate)}` : ''}${inactive ? ' · en pause' : ''}</span></span>
+          <span class="row-amount">${isIncome ? '+' : '−'}${money(rec.amount)}</span>
+          <span class="row-actions" style="margin-left:8px">
+            <button class="btn btn-ghost btn-sm" data-rec-toggle="${rec.id}" title="${rec.active ? 'Mettre en pause' : 'Reactiver'}">${rec.active ? '⏸' : '▶'}</button>
+            <a class="btn btn-ghost btn-sm" href="#/recurrence/${rec.id}">✏️</a></span></li>`;
+      });
+      html += `</ul>`;
+    } else {
+      html += emptyBlock('🔁', 'Aucune recurrence definie.', '<a href="#/recurrence/new?kind=expense">Ajouter la premiere</a>');
+    }
+    html += `</div>`;
+    return {
+      title: 'Recurrences', subtitle: 'Depenses et revenus qui reviennent', html,
+      mount: (root) => {
+        wireRecurActions(root, '#/recurrences');
+        root.querySelectorAll('[data-rec-toggle]').forEach((b) => b.addEventListener('click', async () => {
+          const rec = State.data.recurrences.find((r) => r.id === Number(b.getAttribute('data-rec-toggle')));
+          if (!rec) return;
+          await DB.put('recurrences', { ...rec, active: !rec.active });
+          State.data.recurrences = await DB.all('recurrences'); go('#/recurrences');
+        }));
+      },
+    };
+  };
+
+  Views.recurrenceForm = async function (id) {
+    const item = id ? State.data.recurrences.find((r) => r.id === id) : null;
+    const q = parseQuery();
+    const kind = item ? item.kind : (q.kind === 'income' ? 'income' : 'expense');
+    const isExpense = kind === 'expense';
+    const refs = (isExpense ? State.data.categories : State.data.sources).filter((r) => !r.archived);
+    const methods = isExpense ? EXPENSE_METHODS : INCOME_METHODS;
+    const addSteps = isExpense ? [500, 1000, 5000] : [5000, 25000, 100000];
+    const selId = item ? item.refId : null;
+    const chips = refs.map((r, i) => `<label class="chip"><input type="radio" name="ref" value="${r.id}"
+      ${selId === r.id || (selId == null && i === 0) ? 'checked' : ''}>${icon(r.icon)} ${esc(r.name)}</label>`).join('');
+    const methodOpts = Object.keys(methods).map((k) => `<option value="${k}" ${item && item.method === k ? 'selected' : ''}>${methods[k]}</option>`).join('');
+    const freqOpts = Object.keys(S.FREQ_LABELS).map((k) => `<option value="${k}" ${(item ? item.frequency : 'monthly') === k ? 'selected' : ''}>${cap(S.FREQ_LABELS[k])}</option>`).join('');
+    const steps = addSteps.map((s) => `<button type="button" class="chip" data-add="${s}">+${money(s).replace(',00', '')}</button>`).join('');
+    const btnCls = isExpense ? 'btn' : 'btn btn-income';
+
+    const html = `<form data-form="recur">
+      <div class="card">
+        <label>Montant (${cur()})</label>
+        <input class="amount-input" name="amount" inputmode="decimal" step="0.01" min="0.01"
+          value="${item && item.amount != null ? item.amount : ''}" placeholder="0">
+        <div class="errorlist" data-err="amount" hidden></div>
+        <div class="chips" style="justify-content:center;margin-top:12px">${steps}
+          <button type="button" class="chip" data-clear="1">C</button></div>
+      </div>
+      <div class="card"><span class="form-label">${isExpense ? 'Categorie' : 'Source'}</span>
+        <div class="chips">${chips || `<p class="helptext">Aucune ${isExpense ? 'categorie' : 'source'}.</p>`}</div></div>
+      <div class="card">
+        <div class="form-row">
+          <div class="field"><label>Frequence</label><select name="frequency">${freqOpts}</select></div>
+          <div class="field"><label>${isExpense ? 'Mode de paiement' : 'Mode de reception'}</label>
+            <select name="method">${methodOpts}</select></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Premiere echeance</label><input type="date" name="startDate" value="${item ? item.startDate : S.todayISO()}"></div>
+          <div class="field"><label>Fin (optionnel)</label><input type="date" name="endDate" value="${item && item.endDate ? item.endDate : ''}"></div>
+        </div>
+        <div class="field"><label>Description</label>
+          <input type="text" name="description" value="${esc(item ? item.description || '' : '')}" placeholder="Ex : ${isExpense ? 'loyer' : 'salaire'}"></div>
+        <div class="field" style="margin-bottom:0"><label>Note</label>
+          <textarea name="note" rows="2">${esc(item ? item.note || '' : '')}</textarea></div>
+      </div>
+      <input type="hidden" name="kind" value="${kind}">
+      <button class="${btnCls} btn-block" style="margin-bottom:10px">${item ? 'Enregistrer' : 'Creer la recurrence'}</button>
+    </form>
+    ${item ? `<form data-del-recur="${item.id}" style="margin-top:16px">
+      <button class="btn btn-danger btn-block">Supprimer</button></form>` : ''}`;
+
+    return {
+      title: item ? 'Modifier la recurrence' : (isExpense ? 'Depense recurrente' : 'Revenu recurrent'),
+      subtitle: 'Se repete — a confirmer a chaque echeance', html,
+      mount: (root) => mountRecurForm(root, item),
+    };
+  };
+
+  function mountRecurForm(root, item) {
+    const input = root.querySelector('.amount-input');
+    if (input && !input.value) input.focus();
+    root.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
+      input.value = S.round2((parseFloat(input.value) || 0) + parseFloat(b.getAttribute('data-add')));
+    }));
+    root.querySelectorAll('[data-clear]').forEach((b) => b.addEventListener('click', () => { input.value = ''; input.focus(); }));
+
+    root.querySelector('[data-form="recur"]').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const amount = S.round2(parseFloat(fd.get('amount')));
+      const errEl = root.querySelector('[data-err="amount"]');
+      if (!(amount > 0)) { errEl.hidden = false; errEl.textContent = 'Montant invalide.'; return; }
+      const refVal = fd.get('ref');
+      const kind = fd.get('kind');
+      if (!refVal) { errEl.hidden = false; errEl.textContent = 'Choisissez une ' + (kind === 'expense' ? 'categorie.' : 'source.'); return; }
+      const startDate = fd.get('startDate') || S.todayISO();
+      const rec = {
+        kind, amount, refId: Number(refVal),
+        frequency: fd.get('frequency') || 'monthly',
+        startDate, endDate: fd.get('endDate') || null,
+        method: fd.get('method'),
+        description: (fd.get('description') || '').trim(),
+        note: (fd.get('note') || '').trim(),
+        active: item ? item.active : true,
+        createdAt: item ? item.createdAt : Date.now(),
+        lastRun: item ? (item.lastRun || null) : null,
+        nextDue: item ? item.nextDue : startDate,
+      };
+      if (item) {
+        rec.id = item.id;
+        if (rec.nextDue < startDate) rec.nextDue = startDate; // jamais d'echeance avant le debut
+        await DB.put('recurrences', rec);
+      } else {
+        await DB.add('recurrences', rec);
+      }
+      State.data.recurrences = await DB.all('recurrences');
+      flash('success', item ? 'Recurrence mise a jour.' : 'Recurrence creee.');
+      go('#/recurrences');
+    });
+
+    const del = root.querySelector('[data-del-recur]');
+    if (del) del.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!await confirmModal('Supprimer cette recurrence ? Les ecritures deja creees sont conservees.')) return;
+      await DB.remove('recurrences', Number(del.getAttribute('data-del-recur')));
+      State.data.recurrences = await DB.all('recurrences');
+      flash('success', 'Recurrence supprimee.'); go('#/recurrences');
+    });
+  }
 
   // Historique (depenses / revenus) ----------------------------------------
 
@@ -793,6 +1014,7 @@ const App = (function () {
       expenses: d.expenses.length, total: S.sum(d.expenses, 'amount'),
       incomes: d.incomes.length, earned: S.sum(d.incomes, 'amount'),
       categories: d.categories.length, sources: d.sources.length, limits: d.limits.length,
+      recurrences: d.recurrences.filter((r) => r.active).length,
     };
     const hasPin = !!(await DB.metaGet('pin', null));
     const html = `
@@ -814,7 +1036,10 @@ const App = (function () {
           <a class="btn btn-ghost btn-sm" href="#/categories">Gerer</a></li>
         <li class="row"><span class="row-icon" style="background:#15803d">💵</span>
           <span class="row-main"><span class="t">Sources de revenus</span><span class="s">${stats.sources} source${stats.sources > 1 ? 's' : ''}</span></span>
-          <a class="btn btn-ghost btn-sm" href="#/sources">Gerer</a></li></ul></div>
+          <a class="btn btn-ghost btn-sm" href="#/sources">Gerer</a></li>
+        <li class="row"><span class="row-icon" style="background:#7c3aed">🔁</span>
+          <span class="row-main"><span class="t">Transactions recurrentes</span><span class="s">${stats.recurrences} active${stats.recurrences > 1 ? 's' : ''}</span></span>
+          <a class="btn btn-ghost btn-sm" href="#/recurrences">Gerer</a></li></ul></div>
 
       <div class="card"><h2 class="card-title">Mes donnees</h2><div class="stat-grid">
         <div class="stat"><div class="k">Depenses</div><div class="v">${stats.expenses}</div></div>
@@ -907,7 +1132,7 @@ const App = (function () {
 
   async function buildBackup() {
     const dump = { version: 1, exportedAt: new Date().toISOString(), meta: { currency: State.currency, threshold: State.threshold } };
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts']) dump[s] = await DB.all(s);
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences']) dump[s] = await DB.all(s);
     return dump;
   }
 
@@ -988,7 +1213,7 @@ const App = (function () {
     try {
       const dump = JSON.parse(await file.text());
       await DB.clearData(); // remplace les donnees, mais conserve licence / PIN / essai (store meta)
-      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts']) {
+      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences']) {
         if (Array.isArray(dump[s])) await DB.bulkAdd(s, dump[s]);
       }
       if (dump.meta) { await DB.metaSet('currency', dump.meta.currency || 'FCFA'); await DB.metaSet('threshold', dump.meta.threshold || 80); }
@@ -1201,6 +1426,13 @@ const App = (function () {
       { period: 'month', categoryId: catBy['Nourriture'], amount: 60000, active: true },
       { period: 'month', categoryId: catBy['Loisirs'], amount: 20000, active: true },
     ]);
+
+    const todayIso = S.todayISO();
+    await DB.bulkAdd('recurrences', [
+      { kind: 'income', amount: 185000, refId: srcBy['Salaire'], frequency: 'monthly', method: 'transfer', description: 'Salaire mensuel', note: '', startDate: S.addDays(todayIso, -1), endDate: null, nextDue: S.addDays(todayIso, -1), active: true, createdAt: Date.now(), lastRun: null },
+      { kind: 'expense', amount: 9000, refId: catBy['Communication'], frequency: 'monthly', method: 'mobile', description: 'Forfait telephone', note: '', startDate: S.addDays(todayIso, -2), endDate: null, nextDue: S.addDays(todayIso, -2), active: true, createdAt: Date.now(), lastRun: null },
+      { kind: 'expense', amount: 45000, refId: catBy['Logement'], frequency: 'monthly', method: 'transfer', description: 'Loyer', note: '', startDate: S.addDays(todayIso, 3), endDate: null, nextDue: S.addDays(todayIso, 3), active: true, createdAt: Date.now(), lastRun: null },
+    ]);
   }
 
   // --- Routeur ------------------------------------------------------------
@@ -1224,6 +1456,9 @@ const App = (function () {
     [/^#\/income-history/, () => Views.incomeHistory()],
     [/^#\/budgets/, () => Views.budgets()],
     [/^#\/budget\/(\d+)/, (m) => Views.budgetEdit(Number(m[1]))],
+    [/^#\/recurrences/, () => Views.recurrences()],
+    [/^#\/recurrence\/new/, () => Views.recurrenceForm(null)],
+    [/^#\/recurrence\/(\d+)/, (m) => Views.recurrenceForm(Number(m[1]))],
     [/^#\/categories/, () => Views.categories()],
     [/^#\/category\/(\d+)/, (m) => refEditView({ store: 'categories', base: '#/categories', tab: null }, Number(m[1]))],
     [/^#\/sources/, () => Views.sources()],

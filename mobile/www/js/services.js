@@ -273,10 +273,64 @@ const Services = (function () {
     return alert.limitAmount ? (alert.spent / alert.limitAmount) * 100 : 0;
   }
 
+  // --- Transactions recurrentes -------------------------------------------
+  // Un modele recurrent porte startDate (ancre), frequency, nextDue (prochaine
+  // echeance) et endDate optionnelle. Rien n'est cree automatiquement : l'app
+  // signale les echeances arrivees et l'utilisateur confirme (ou passe).
+
+  const FREQ_LABELS = { weekly: 'hebdomadaire', monthly: 'mensuel', yearly: 'annuel' };
+
+  function daysInMonth(y, m0) { return new Date(y, m0 + 1, 0).getDate(); }
+
+  // Avance une date ISO d'une occurrence en conservant le jour d'ancrage
+  // (jour du mois pour mensuel/annuel), avec repli sur le dernier jour du mois
+  // (ex. le 31 devient le 30 ou le 28 selon le mois).
+  function advanceOccurrence(dateISO, frequency, anchorDay) {
+    const d = parse(dateISO);
+    if (frequency === 'weekly') { d.setDate(d.getDate() + 7); return iso(d); }
+    if (frequency === 'yearly') {
+      const y = d.getFullYear() + 1, m = d.getMonth();
+      return iso(new Date(y, m, Math.min(anchorDay, daysInMonth(y, m))));
+    }
+    let y = d.getFullYear(), m = d.getMonth() + 1;   // mensuel (defaut)
+    if (m > 11) { m -= 12; y += 1; }
+    return iso(new Date(y, m, Math.min(anchorDay, daysInMonth(y, m))));
+  }
+
+  function anchorDayOf(rec) { return parse(rec.startDate).getDate(); }
+
+  // Prochaine echeance de rec strictement apres fromISO.
+  function advanceRecurrence(rec, fromISO) {
+    return advanceOccurrence(rec.nextDue, rec.frequency, anchorDayOf(rec));
+  }
+
+  function recurrenceLive(rec) {
+    return rec.active && (!rec.endDate || rec.nextDue <= rec.endDate);
+  }
+
+  // Echeances arrivees (nextDue <= aujourd'hui), a confirmer.
+  function dueRecurrences(recurrences, refISO) {
+    const today = refISO || todayISO();
+    return recurrences
+      .filter((r) => recurrenceLive(r) && r.nextDue <= today)
+      .sort((a, b) => (a.nextDue < b.nextDue ? -1 : a.nextDue > b.nextDue ? 1 : 0));
+  }
+
+  // Echeances a venir dans les `days` prochains jours (apercu).
+  function upcomingRecurrences(recurrences, refISO, days) {
+    const today = refISO || todayISO();
+    const horizon = addDays(today, days || 7);
+    return recurrences
+      .filter((r) => recurrenceLive(r) && r.nextDue > today && r.nextDue <= horizon)
+      .sort((a, b) => (a.nextDue < b.nextDue ? -1 : a.nextDue > b.nextDue ? 1 : 0));
+  }
+
   return {
-    PERIOD_LABELS, MONTHS, iso, parse, todayISO, addDays, round2, sum,
+    PERIOD_LABELS, MONTHS, FREQ_LABELS, iso, parse, todayISO, addDays, round2, sum,
     periodBounds, previousPeriod, label, inPeriod, totalFor, breakdown,
     compare, timeline, balance, limitStatus, allLimitStatuses,
     evaluateAlerts, unreadAlerts, ratio,
+    advanceOccurrence, anchorDayOf, advanceRecurrence, recurrenceLive,
+    dueRecurrences, upcomingRecurrences,
   };
 })();
