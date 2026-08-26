@@ -42,6 +42,14 @@
       </span>
       <a class="btn btn-ghost btn-sm" href="{% url 'source_list' %}">Gerer</a>
     </li>
+    <li class="row">
+      <span class="row-icon" style="background:#7c3aed">🔁</span>
+      <span class="row-main">
+        <span class="t">Transactions recurrentes</span>
+        <span class="s">{{ stats.recurrences }} active{{ stats.recurrences|pluralize }}</span>
+      </span>
+      <a class="btn btn-ghost btn-sm" href="{% url 'recurrence_list' %}">Gerer</a>
+    </li>
   </ul>
 </div>
 

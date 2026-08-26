@@ -11,7 +11,8 @@ from django.urls import reverse
 
 from . import services
 from .models import (
-    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Report,
+    Alert, BudgetLimit, Category, Expense, Income, IncomeSource,
+    RecurringTransaction, Report,
 )
 
 
@@ -693,3 +694,107 @@ class BackupTests(BaseCase):
         response = self.client.get(reverse('export_backup'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/connexion/', response['Location'])
+
+
+class RecurrenceTests(BaseCase):
+    """Transactions recurrentes : creation, confirmation, avance d'echeance."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+        self.salaire = IncomeSource.objects.get(user=self.user, name='Salaire')
+
+    def _recur(self, **kw):
+        defaults = dict(
+            user=self.user, kind='expense', amount=Decimal('45000'),
+            category=self.food, method='cash', frequency='monthly',
+            start_date=self.today, next_due=self.today, is_active=True,
+        )
+        defaults.update(kw)
+        return RecurringTransaction.objects.create(**defaults)
+
+    def test_creation_via_formulaire(self):
+        response = self.client.post(reverse('recurrence_create'), {
+            'kind': 'expense', 'amount': '45000', 'category': self.food.pk,
+            'method': 'transfer', 'frequency': 'monthly',
+            'start_date': self.today.isoformat(), 'description': 'Loyer', 'note': '',
+        })
+        self.assertRedirects(response, reverse('recurrence_list'))
+        rec = RecurringTransaction.objects.get(user=self.user)
+        self.assertEqual(rec.next_due, self.today)      # premiere echeance = debut
+        self.assertEqual(rec.kind, 'expense')
+
+    def test_confirmer_cree_la_depense_et_avance_l_echeance(self):
+        rec = self._recur(start_date=date(2026, 1, 31), next_due=date(2026, 1, 31))
+        self.client.post(reverse('recurrence_confirm', args=[rec.pk]))
+        self.assertEqual(
+            Expense.objects.filter(user=self.user, amount=Decimal('45000'),
+                                   date=date(2026, 1, 31)).count(), 1)
+        rec.refresh_from_db()
+        self.assertEqual(rec.next_due, date(2026, 2, 28))   # ancrage 31 -> clamp fevrier
+        self.assertEqual(rec.last_run, date(2026, 1, 31))
+
+    def test_passer_avance_sans_rien_creer(self):
+        rec = self._recur(start_date=date(2026, 3, 10), next_due=date(2026, 3, 10))
+        self.client.post(reverse('recurrence_skip', args=[rec.pk]))
+        self.assertEqual(Expense.objects.filter(user=self.user).count(), 0)
+        rec.refresh_from_db()
+        self.assertEqual(rec.next_due, date(2026, 4, 10))
+
+    def test_confirmer_un_revenu_le_marque_recurrent(self):
+        rec = self._recur(kind='income', category=None, source=self.salaire,
+                          amount=Decimal('185000'))
+        self.client.post(reverse('recurrence_confirm', args=[rec.pk]))
+        inc = Income.objects.get(user=self.user, amount=Decimal('185000'))
+        self.assertTrue(inc.is_recurring)
+        self.assertEqual(inc.source, self.salaire)
+
+    def test_ancrage_des_echeances(self):
+        A = services.advance_occurrence
+        d, seq = date(2026, 1, 31), []
+        for _ in range(4):
+            d = A(d, 'monthly', 31); seq.append(d)
+        self.assertEqual(seq, [date(2026, 2, 28), date(2026, 3, 31),
+                               date(2026, 4, 30), date(2026, 5, 31)])
+        self.assertEqual(A(date(2024, 2, 29), 'yearly', 29), date(2025, 2, 28))
+        self.assertEqual(A(date(2026, 8, 26), 'weekly', 26), date(2026, 9, 2))
+
+    def test_les_echeances_dues_apparaissent_sur_le_dashboard(self):
+        self._recur(description='Forfait', next_due=services.today())
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'A confirmer')
+        self.assertContains(response, 'Forfait')
+
+    def test_une_echeance_future_n_est_pas_due(self):
+        futur = services.today() + timedelta(days=10)
+        self._recur(description='Futur', start_date=futur, next_due=futur)
+        self.assertEqual(services.due_recurrences(self.user), [])
+
+    def test_la_pause_retire_des_echeances_dues(self):
+        rec = self._recur(next_due=services.today())
+        self.client.post(reverse('recurrence_toggle', args=[rec.pk]))
+        rec.refresh_from_db()
+        self.assertFalse(rec.is_active)
+        self.assertEqual(services.due_recurrences(self.user), [])
+
+    def test_les_recurrences_sont_isolees_par_utilisateur(self):
+        bob = User.objects.create_user('bob', password='motdepasse-123')
+        rec = RecurringTransaction.objects.create(
+            user=bob, kind='expense', amount=Decimal('10'),
+            category=Category.objects.get(user=bob, name='Nourriture'),
+            frequency='monthly', start_date=self.today, next_due=self.today,
+        )
+        response = self.client.post(reverse('recurrence_confirm', args=[rec.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Expense.objects.filter(user=bob).count(), 0)
+
+    def test_les_vues_exigent_une_connexion(self):
+        self.client.logout()
+        response = self.client.get(reverse('recurrence_list'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/connexion/', response['Location'])
+
+    def test_la_sauvegarde_inclut_les_recurrences(self):
+        self._recur(description='Loyer', next_due=self.today)
+        payload = json.loads(self.client.get(reverse('export_backup')).content)
+        self.assertTrue(any(r['description'] == 'Loyer' for r in payload['recurrences']))

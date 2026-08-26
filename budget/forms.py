@@ -4,7 +4,10 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import BudgetLimit, Category, Expense, Income, IncomeSource, Profile
+from .models import (
+    BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    RecurringTransaction,
+)
 
 # Le navigateur poste toujours en ISO ; on tolere aussi la saisie francaise.
 ISO_AND_FR = ['%Y-%m-%d', '%d/%m/%Y', '%d/%m/%y']
@@ -236,6 +239,60 @@ class ProfileForm(forms.ModelForm):
         widgets = {
             'alert_threshold': forms.NumberInput(attrs={'min': 10, 'max': 100}),
         }
+
+
+class RecurringTransactionForm(forms.ModelForm):
+    """Definit une recurrence (depense ou revenu). Le type est fixe a la
+    creation ; seule la reference correspondante (categorie ou source) est
+    demandee."""
+
+    class Meta:
+        model = RecurringTransaction
+        fields = ['amount', 'category', 'source', 'method', 'frequency',
+                  'start_date', 'end_date', 'description', 'note']
+        widgets = {
+            'amount': forms.NumberInput(
+                attrs={'inputmode': 'decimal', 'step': '0.01', 'min': '0.01',
+                       'placeholder': '0', 'autofocus': True, 'class': 'amount-input'}
+            ),
+            'start_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'end_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'description': forms.TextInput(attrs={'placeholder': 'Ex : loyer'}),
+            'note': forms.Textarea(attrs={'rows': 2, 'placeholder': 'Note (facultatif)'}),
+        }
+
+    def __init__(self, *args, user=None, kind='expense', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.kind = self.instance.kind if self.instance.pk else kind
+        if self.kind == RecurringTransaction.Kind.INCOME:
+            self.fields.pop('category')
+            self.fields['source'].queryset = IncomeSource.objects.filter(
+                user=user, is_archived=False)
+            self.fields['source'].empty_label = None
+        else:
+            self.fields.pop('source')
+            self.fields['category'].queryset = Category.objects.filter(
+                user=user, is_archived=False)
+            self.fields['category'].empty_label = None
+        self.fields['description'].required = False
+        self.fields['end_date'].required = False
+        self.fields['start_date'].input_formats = ISO_AND_FR
+        self.fields['end_date'].input_formats = ISO_AND_FR
+
+    def save(self, commit=True):
+        rec = super().save(commit=False)
+        rec.user = self.user
+        rec.kind = self.kind
+        # A la creation, la premiere echeance = date de debut ; a l'edition, on
+        # ne laisse jamais l'echeance passer avant la nouvelle date de debut.
+        if rec.next_due is None:
+            rec.next_due = rec.start_date
+        elif rec.next_due < rec.start_date:
+            rec.next_due = rec.start_date
+        if commit:
+            rec.save()
+        return rec
 
 
 class ExpenseFilterForm(forms.Form):

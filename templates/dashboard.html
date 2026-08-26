@@ -56,6 +56,16 @@
   </form>
 {% endif %}
 
+{# ---------------------------------------------- Recurrences a confirmer #}
+{% if due_recurrences %}
+  <div class="card">
+    <h2 class="card-title">A confirmer <a href="{% url 'recurrence_list' %}">Gerer</a></h2>
+    {% for rec in due_recurrences %}
+      {% include 'partials/due_recurrence.html' with rec=rec next='dashboard' %}
+    {% endfor %}
+  </div>
+{% endif %}
+
 {# --------------------------------------------------------- KPI du jour #}
 <div class="card hero">
   <div class="label">Depenses d'aujourd'hui</div>

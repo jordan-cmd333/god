@@ -357,3 +357,65 @@ class Report(models.Model):
 
     def __str__(self):
         return f'{self.get_kind_display()} {self.period_start} : {self.total}'
+
+
+class RecurringTransaction(models.Model):
+    """Modele recurrent : une depense ou un revenu qui revient (loyer, salaire,
+    abonnement, ecolage...). Rien n'est cree en silence : a l'echeance
+    (`next_due` <= aujourd'hui), l'utilisateur confirme (ou passe)."""
+
+    class Kind(models.TextChoices):
+        EXPENSE = 'expense', 'Depense'
+        INCOME = 'income', 'Revenu'
+
+    class Frequency(models.TextChoices):
+        WEEKLY = 'weekly', 'Hebdomadaire'
+        MONTHLY = 'monthly', 'Mensuel'
+        YEARLY = 'yearly', 'Annuel'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='recurrences'
+    )
+    kind = models.CharField('type', max_length=8, choices=Kind.choices)
+    amount = models.DecimalField(
+        'montant', max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    # Une seule des deux references est renseignee selon `kind`.
+    category = models.ForeignKey(
+        Category, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='recurrences', verbose_name='categorie',
+    )
+    source = models.ForeignKey(
+        IncomeSource, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='recurrences', verbose_name='source',
+    )
+    method = models.CharField(
+        'mode', max_length=10,
+        choices=Expense.PaymentMethod.choices, default=Expense.PaymentMethod.CASH,
+    )
+    description = models.CharField('description', max_length=140, blank=True)
+    note = models.TextField('note', blank=True)
+    frequency = models.CharField(
+        'frequence', max_length=8, choices=Frequency.choices, default=Frequency.MONTHLY,
+    )
+    start_date = models.DateField('premiere echeance', default=timezone.localdate)
+    end_date = models.DateField('fin', null=True, blank=True)
+    next_due = models.DateField('prochaine echeance')
+    is_active = models.BooleanField('active', default=True)
+    last_run = models.DateField('derniere execution', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'transaction recurrente'
+        verbose_name_plural = 'transactions recurrentes'
+        ordering = ['next_due']
+        indexes = [models.Index(fields=['user', 'is_active', 'next_due'])]
+
+    def __str__(self):
+        return f'{self.get_frequency_display()} {self.amount} ({self.description or self.kind})'
+
+    @property
+    def ref(self):
+        """Categorie (depense) ou source (revenu) selon le type."""
+        return self.source if self.kind == self.Kind.INCOME else self.category

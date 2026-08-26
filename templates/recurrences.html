@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Recurrences — Budget Control{% endblock %}
+{% block page_title %}Transactions recurrentes{% endblock %}
+{% block page_subtitle %}Depenses et revenus qui reviennent{% endblock %}
+
+{% block content %}
+
+<div class="btn-row" style="margin-bottom:16px">
+  <a href="{% url 'recurrence_create' %}?kind=expense" class="btn">＋ Depense</a>
+  <a href="{% url 'recurrence_create' %}?kind=income" class="btn btn-income">＋ Revenu</a>
+</div>
+
+{% if due %}
+  <div class="card">
+    <h2 class="card-title">A confirmer</h2>
+    {% for rec in due %}
+      {% include 'partials/due_recurrence.html' with rec=rec next='recurrence_list' %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="card">
+  <h2 class="card-title">Mes recurrences</h2>
+  {% if recurrences %}
+    <ul class="list">
+      {% for rec in recurrences %}
+        <li class="row" {% if not rec.is_active %}style="opacity:.55"{% endif %}>
+          <span class="row-icon" style="background:{{ rec.ref.color }}">{{ rec.ref.icon|icon }}</span>
+          <span class="row-main">
+            <span class="t">{{ rec.description|default:rec.ref.name }}</span>
+            <span class="s">
+              {{ rec.get_frequency_display|lower }} ·
+              {% if rec.kind == 'income' %}revenu{% else %}depense{% endif %} ·
+              prochaine {{ rec.next_due|date:"d/m/Y" }}{% if rec.end_date %} · jusqu'au {{ rec.end_date|date:"d/m/Y" }}{% endif %}{% if not rec.is_active %} · en pause{% endif %}
+            </span>
+          </span>
+          <span class="row-amount">{% if rec.kind == 'income' %}+{% else %}−{% endif %}{{ rec.amount|money }}</span>
+          <span class="row-actions" style="margin-left:8px">
+            <form method="post" action="{% url 'recurrence_toggle' rec.pk %}" style="display:inline">
+              {% csrf_token %}
+              <button class="btn btn-ghost btn-sm" title="{% if rec.is_active %}Mettre en pause{% else %}Reactiver{% endif %}">{% if rec.is_active %}⏸{% else %}▶{% endif %}</button>
+            </form>
+            <a class="btn btn-ghost btn-sm" href="{% url 'recurrence_edit' rec.pk %}">✏️</a>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty">
+      <span class="big">🔁</span>
+      Aucune recurrence definie.<br>
+      Ajoutez-en une ci-dessus (loyer, salaire, abonnement...).
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

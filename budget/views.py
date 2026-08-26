@@ -16,10 +16,11 @@ from django.views.decorators.http import require_POST
 from . import backup, exports, services
 from .forms import (
     BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm, IncomeFilterForm,
-    IncomeForm, IncomeSourceForm, ProfileForm, SignUpForm,
+    IncomeForm, IncomeSourceForm, ProfileForm, RecurringTransactionForm, SignUpForm,
 )
 from .models import (
     Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    RecurringTransaction,
 )
 
 
@@ -53,6 +54,7 @@ def dashboard(request):
     ])
     context['chart_timeline'] = json.dumps(context['timeline'])
     context['quick_form'] = ExpenseForm(user=request.user)
+    context['due_recurrences'] = services.due_recurrences(request.user)
     profile = getattr(request.user, 'profile', None)
     snooze = request.session.get('backup_snooze_until')
     snoozed = bool(snooze and snooze > timezone.now().isoformat())
@@ -547,6 +549,81 @@ def backup_snooze(request):
 
 
 # --------------------------------------------------------------------------
+# Transactions recurrentes
+# --------------------------------------------------------------------------
+
+@login_required
+def recurrence_list(request):
+    return render(request, 'recurrences.html', {
+        'recurrences': RecurringTransaction.objects.filter(user=request.user)
+                       .select_related('category', 'source'),
+        'due': services.due_recurrences(request.user),
+    })
+
+
+@login_required
+def recurrence_create(request):
+    kind = request.POST.get('kind') or request.GET.get('kind') or 'expense'
+    if kind not in ('expense', 'income'):
+        kind = 'expense'
+    form = RecurringTransactionForm(request.POST or None, user=request.user, kind=kind)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Recurrence creee.')
+        return redirect('recurrence_list')
+    return render(request, 'recurrence_form.html', {'form': form, 'kind': kind, 'is_edit': False})
+
+
+@login_required
+def recurrence_edit(request, pk):
+    rec = get_object_or_404(RecurringTransaction, pk=pk, user=request.user)
+    form = RecurringTransactionForm(request.POST or None, instance=rec, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Recurrence mise a jour.')
+        return redirect('recurrence_list')
+    return render(request, 'recurrence_form.html',
+                  {'form': form, 'kind': rec.kind, 'is_edit': True, 'recurrence': rec})
+
+
+@login_required
+@require_POST
+def recurrence_delete(request, pk):
+    get_object_or_404(RecurringTransaction, pk=pk, user=request.user).delete()
+    messages.success(request, 'Recurrence supprimee. Les ecritures deja creees sont conservees.')
+    return redirect('recurrence_list')
+
+
+@login_required
+@require_POST
+def recurrence_confirm(request, pk):
+    rec = get_object_or_404(RecurringTransaction, pk=pk, user=request.user)
+    label = 'Revenu' if rec.kind == RecurringTransaction.Kind.INCOME else 'Depense'
+    amount = rec.amount
+    services.confirm_recurrence(rec)
+    messages.success(request, f'{label} de {amount} ajoute(e).')
+    return redirect(request.POST.get('next') or 'dashboard')
+
+
+@login_required
+@require_POST
+def recurrence_skip(request, pk):
+    rec = get_object_or_404(RecurringTransaction, pk=pk, user=request.user)
+    services.skip_recurrence(rec)
+    messages.info(request, 'Echeance passee.')
+    return redirect(request.POST.get('next') or 'dashboard')
+
+
+@login_required
+@require_POST
+def recurrence_toggle(request, pk):
+    rec = get_object_or_404(RecurringTransaction, pk=pk, user=request.user)
+    rec.is_active = not rec.is_active
+    rec.save(update_fields=['is_active'])
+    return redirect('recurrence_list')
+
+
+# --------------------------------------------------------------------------
 # Parametres
 # --------------------------------------------------------------------------
 
@@ -572,6 +649,8 @@ def settings_view(request):
             'sources': IncomeSource.objects.filter(user=request.user).count(),
             'earned': Income.objects.filter(user=request.user)
                       .aggregate(t=Sum('amount'))['t'] or Decimal('0'),
+            'recurrences': RecurringTransaction.objects.filter(
+                user=request.user, is_active=True).count(),
         },
     })
 

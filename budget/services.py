@@ -15,7 +15,10 @@ from django.conf import settings
 from django.db.models import Count, Sum
 from django.utils import timezone
 
-from .models import Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Report
+from .models import (
+    Alert, BudgetLimit, Category, Expense, Income, IncomeSource,
+    RecurringTransaction, Report,
+)
 
 ZERO = Decimal('0.00')
 
@@ -506,3 +509,72 @@ def bootstrap_user(user):
         Category.create_defaults(user)
     if not IncomeSource.objects.filter(user=user).exists():
         IncomeSource.create_defaults(user)
+
+
+# --------------------------------------------------------------------------
+# Transactions recurrentes
+# --------------------------------------------------------------------------
+
+def advance_occurrence(current: date, frequency: str, anchor_day: int) -> date:
+    """Date de l'occurrence suivante, en conservant le jour d'ancrage (jour du
+    mois pour mensuel/annuel), avec repli sur le dernier jour du mois."""
+    if frequency == 'weekly':
+        return current + timedelta(days=7)
+    if frequency == 'yearly':
+        y = current.year + 1
+        return date(y, current.month, min(anchor_day, monthrange(y, current.month)[1]))
+    y, m = current.year, current.month + 1   # mensuel (defaut)
+    if m > 12:
+        m, y = 1, y + 1
+    return date(y, m, min(anchor_day, monthrange(y, m)[1]))
+
+
+def _recurrence_live(rec) -> bool:
+    return rec.is_active and (rec.end_date is None or rec.next_due <= rec.end_date)
+
+
+def due_recurrences(user, ref: date | None = None):
+    """Echeances arrivees (a confirmer), triees par date."""
+    ref = ref or today()
+    qs = (RecurringTransaction.objects
+          .filter(user=user, is_active=True, next_due__lte=ref)
+          .select_related('category', 'source')
+          .order_by('next_due'))
+    return [r for r in qs if _recurrence_live(r)]
+
+
+def upcoming_recurrences(user, ref: date | None = None, days: int = 7):
+    """Echeances a venir dans les `days` prochains jours (apercu)."""
+    ref = ref or today()
+    horizon = ref + timedelta(days=days)
+    qs = (RecurringTransaction.objects
+          .filter(user=user, is_active=True, next_due__gt=ref, next_due__lte=horizon)
+          .select_related('category', 'source')
+          .order_by('next_due'))
+    return [r for r in qs if _recurrence_live(r)]
+
+
+def confirm_recurrence(rec):
+    """Cree l'ecriture datee de l'echeance puis avance la recurrence."""
+    d = rec.next_due
+    if rec.kind == RecurringTransaction.Kind.INCOME:
+        Income.objects.create(
+            user=rec.user, source=rec.source, amount=rec.amount, date=d,
+            method=rec.method, description=rec.description, is_recurring=True, note=rec.note,
+        )
+    else:
+        Expense.objects.create(
+            user=rec.user, category=rec.category, amount=rec.amount, date=d,
+            payment_method=rec.method, description=rec.description, note=rec.note,
+        )
+    rec.last_run = d
+    rec.next_due = advance_occurrence(rec.next_due, rec.frequency, rec.start_date.day)
+    rec.save(update_fields=['last_run', 'next_due'])
+    evaluate_alerts(rec.user, d)
+    refresh_reports(rec.user, d)
+
+
+def skip_recurrence(rec):
+    """Avance la recurrence sans rien creer (echeance passee)."""
+    rec.next_due = advance_occurrence(rec.next_due, rec.frequency, rec.start_date.day)
+    rec.save(update_fields=['next_due'])

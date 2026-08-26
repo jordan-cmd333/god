@@ -55,6 +55,15 @@ urlpatterns = [
     path('sauvegarde/import/', views.import_backup, name='import_backup'),
     path('sauvegarde/rappel-plus-tard/', views.backup_snooze, name='backup_snooze'),
 
+    # Transactions recurrentes
+    path('recurrences/', views.recurrence_list, name='recurrence_list'),
+    path('recurrences/ajouter/', views.recurrence_create, name='recurrence_create'),
+    path('recurrences/<int:pk>/modifier/', views.recurrence_edit, name='recurrence_edit'),
+    path('recurrences/<int:pk>/supprimer/', views.recurrence_delete, name='recurrence_delete'),
+    path('recurrences/<int:pk>/confirmer/', views.recurrence_confirm, name='recurrence_confirm'),
+    path('recurrences/<int:pk>/passer/', views.recurrence_skip, name='recurrence_skip'),
+    path('recurrences/<int:pk>/activer/', views.recurrence_toggle, name='recurrence_toggle'),
+
     # Parametres et API
     path('parametres/', views.settings_view, name='settings'),
     path('api/resume/', views.api_summary, name='api_summary'),

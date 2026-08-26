@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} recurrence — Budget Control{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier la recurrence{% elif kind == 'income' %}Revenu recurrent{% else %}Depense recurrente{% endif %}{% endblock %}
+{% block page_subtitle %}Se repete — a confirmer a chaque echeance{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <input type="hidden" name="kind" value="{{ kind }}">
+
+  {# ------------------------------------------------------------- Montant #}
+  <div class="card">
+    <label for="{{ form.amount.id_for_label }}">Montant ({{ currency }})</label>
+    {{ form.amount }}
+    {{ form.amount.errors }}
+    <div class="chips" style="justify-content:center;margin-top:12px">
+      {% if kind == 'income' %}
+        <button type="button" class="chip" data-add="5000">+5 000</button>
+        <button type="button" class="chip" data-add="25000">+25 000</button>
+        <button type="button" class="chip" data-add="100000">+100 000</button>
+      {% else %}
+        <button type="button" class="chip" data-add="500">+500</button>
+        <button type="button" class="chip" data-add="1000">+1 000</button>
+        <button type="button" class="chip" data-add="5000">+5 000</button>
+      {% endif %}
+      <button type="button" class="chip" data-clear="1">C</button>
+    </div>
+  </div>
+
+  {# ------------------------------------------------- Categorie / source #}
+  <div class="card">
+    <span class="form-label">{% if kind == 'income' %}Source{% else %}Categorie{% endif %}</span>
+    <div class="chips">
+      {% if kind == 'income' %}
+        {% for s in form.fields.source.queryset %}
+          <label class="chip">
+            <input type="radio" name="source" value="{{ s.pk }}"
+                   {% if form.source.value|stringformat:"s" == s.pk|stringformat:"s" %}checked{% endif %}
+                   {% if forloop.first and not form.source.value %}checked{% endif %}>
+            {{ s.icon|icon }} {{ s.name }}
+          </label>
+        {% empty %}
+          <p class="helptext">Aucune source. <a href="{% url 'source_list' %}">Creez-en une</a>.</p>
+        {% endfor %}
+      {% else %}
+        {% for c in form.fields.category.queryset %}
+          <label class="chip">
+            <input type="radio" name="category" value="{{ c.pk }}"
+                   {% if form.category.value|stringformat:"s" == c.pk|stringformat:"s" %}checked{% endif %}
+                   {% if forloop.first and not form.category.value %}checked{% endif %}>
+            {{ c.icon|icon }} {{ c.name }}
+          </label>
+        {% empty %}
+          <p class="helptext">Aucune categorie. <a href="{% url 'category_list' %}">Creez-en une</a>.</p>
+        {% endfor %}
+      {% endif %}
+    </div>
+    {{ form.category.errors }}{{ form.source.errors }}
+  </div>
+
+  {# ------------------------------------------ Frequence, echeances, mode #}
+  <div class="card">
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.frequency.id_for_label }}">Frequence</label>
+        {{ form.frequency }}
+      </div>
+      <div class="field">
+        <label for="{{ form.method.id_for_label }}">{% if kind == 'income' %}Mode de reception{% else %}Mode de paiement{% endif %}</label>
+        {{ form.method }}
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.start_date.id_for_label }}">Premiere echeance</label>
+        {{ form.start_date }}
+        {{ form.start_date.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.end_date.id_for_label }}">Fin (optionnel)</label>
+        {{ form.end_date }}
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.description.id_for_label }}">Description</label>
+      {{ form.description }}
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="{{ form.note.id_for_label }}">Note</label>
+      {{ form.note }}
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-block" style="margin-bottom:10px">
+    {% if is_edit %}Enregistrer{% else %}Creer la recurrence{% endif %}
+  </button>
+</form>
+
+{% if is_edit %}
+  <form method="post" action="{% url 'recurrence_delete' recurrence.pk %}" style="margin-top:16px"
+        onsubmit="return confirm('Supprimer cette recurrence ? Les ecritures deja creees sont conservees.')">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block">Supprimer cette recurrence</button>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var input = document.querySelector('.amount-input');
+    if (!input) return;
+    if (!input.value) input.focus();
+    document.querySelectorAll('[data-add]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        input.value = (parseFloat(input.value) || 0) + parseFloat(btn.getAttribute('data-add'));
+      });
+    });
+    document.querySelectorAll('[data-clear]').forEach(function (btn) {
+      btn.addEventListener('click', function () { input.value = ''; input.focus(); });
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% load budget_extras %}
+{# Une echeance a confirmer. Contexte attendu : `rec`, `next` (nom de vue de retour). #}
+<div class="limit">
+  <div class="limit-head">
+    <span class="limit-name">
+      <span class="dot" style="background:{{ rec.ref.color }}"></span>
+      {{ rec.description|default:rec.ref.name }}
+      <span class="limit-period">· {{ rec.get_frequency_display|lower }} · echeance {{ rec.next_due|date:"d/m/Y" }}</span>
+    </span>
+    <span class="limit-amounts">
+      <b>{% if rec.kind == 'income' %}+{% else %}−{% endif %}{{ rec.amount|money }}</b>
+    </span>
+  </div>
+  <div class="btn-row" style="margin-top:8px">
+    <form method="post" action="{% url 'recurrence_confirm' rec.pk %}" style="display:inline">
+      {% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+      <button class="btn btn-sm {% if rec.kind == 'income' %}btn-income{% endif %}">Confirmer</button>
+    </form>
+    <form method="post" action="{% url 'recurrence_skip' rec.pk %}" style="display:inline">
+      {% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+      <button class="btn btn-ghost btn-sm">Passer</button>
+    </form>
+  </div>
+</div>

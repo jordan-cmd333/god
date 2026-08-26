@@ -17,7 +17,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from .models import (
-    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile, Report,
+    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    RecurringTransaction, Report,
 )
 
 FORMAT_VERSION = 1
@@ -67,6 +68,16 @@ def export_payload(user):
              'amount': str(l.amount), 'is_active': l.is_active}
             for l in BudgetLimit.objects.filter(user=user).order_by('id')
         ],
+        'recurrences': [
+            {'kind': r.kind, 'amount': str(r.amount),
+             'category_id': r.category_id, 'source_id': r.source_id,
+             'method': r.method, 'description': r.description, 'note': r.note,
+             'frequency': r.frequency, 'start_date': r.start_date.isoformat(),
+             'end_date': r.end_date.isoformat() if r.end_date else None,
+             'next_due': r.next_due.isoformat(), 'is_active': r.is_active,
+             'last_run': r.last_run.isoformat() if r.last_run else None}
+            for r in RecurringTransaction.objects.filter(user=user).order_by('id')
+        ],
     }
 
 
@@ -91,6 +102,7 @@ def import_payload(user, data):
     Expense.objects.filter(user=user).delete()
     Income.objects.filter(user=user).delete()
     BudgetLimit.objects.filter(user=user).delete()
+    RecurringTransaction.objects.filter(user=user).delete()  # FK PROTECT -> cat/source
     Category.objects.filter(user=user).delete()
     IncomeSource.objects.filter(user=user).delete()
 
@@ -135,6 +147,21 @@ def import_payload(user, data):
         BudgetLimit.objects.create(
             user=user, period=l['period'], category=category,
             amount=Decimal(str(l['amount'])), is_active=bool(l.get('is_active', True)),
+        )
+
+    for r in data.get('recurrences', []):
+        cid, sid = r.get('category_id'), r.get('source_id')
+        RecurringTransaction.objects.create(
+            user=user, kind=r.get('kind', 'expense'), amount=Decimal(str(r['amount'])),
+            category=cat_map.get(cid) if cid is not None else None,
+            source=src_map.get(sid) if sid is not None else None,
+            method=r.get('method', 'cash'), description=r.get('description', ''),
+            note=r.get('note', ''), frequency=r.get('frequency', 'monthly'),
+            start_date=date.fromisoformat(r['start_date']),
+            end_date=date.fromisoformat(r['end_date']) if r.get('end_date') else None,
+            next_due=date.fromisoformat(r['next_due']),
+            is_active=bool(r.get('is_active', True)),
+            last_run=date.fromisoformat(r['last_run']) if r.get('last_run') else None,
         )
 
     # Preferences + horodatage : les donnees correspondent desormais a cette
