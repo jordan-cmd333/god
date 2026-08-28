@@ -671,14 +671,53 @@ const App = (function () {
   }
 
   // Objectifs d'epargne ----------------------------------------------------
-  // Suivi autonome : chaque objectif porte un montant epargne, ajuste a la main
-  // (Ajouter / Retirer). N'affecte pas le solde depenses/revenus.
+  // Chaque contribution est une depense reelle dans la categorie « Epargne »,
+  // liee a l'objectif par goalId : mettre de cote sort donc l'argent du solde
+  // disponible. Le montant epargne = somme des depenses liees (source unique).
+
+  function goalContributions(g) { return State.data.expenses.filter((e) => e.goalId === g.id); }
+  function goalSaved(g) { return S.sum(goalContributions(g), 'amount'); }
 
   function goalStatus(g) {
     const target = g.target || 0;
-    const saved = g.saved || 0;
+    const saved = goalSaved(g);
     const percent = target > 0 ? Math.min(100, (saved / target) * 100) : (saved > 0 ? 100 : 0);
-    return { percent, remaining: S.round2(Math.max(0, target - saved)), reached: target > 0 && saved >= target };
+    return { saved, percent, remaining: S.round2(Math.max(0, target - saved)), reached: target > 0 && saved >= target };
+  }
+
+  // Categorie « Epargne » (creee au besoin) qui porte les depenses de mise de cote.
+  async function ensureSavingsCategory() {
+    let c = State.data.categories.find((x) => !x.archived && x.icon === 'saving')
+         || State.data.categories.find((x) => !x.archived && /epargne/i.test(x.name));
+    if (!c) {
+      c = await DB.add('categories', { name: 'Epargne', color: '#22c55e', icon: 'saving', archived: false });
+      State.data.categories = await DB.all('categories');
+    }
+    return c;
+  }
+
+  async function goalContribute(goal, amount) {
+    const cat = await ensureSavingsCategory();
+    const date = S.todayISO();
+    await DB.add('expenses', { amount, categoryId: cat.id, description: `Epargne : ${goal.name}`, date, method: 'transfer', note: '', goalId: goal.id, createdAt: Date.now() });
+    State.data.expenses = await DB.all('expenses');
+    await reevaluate(date);
+  }
+
+  // Reprendre de l'epargne : on retire les dernieres contributions (depenses
+  // liees les plus recentes), ce qui remet l'argent dans le solde disponible.
+  async function goalWithdraw(goal, amount) {
+    let remaining = amount;
+    for (const e of goalContributions(goal).sort(sortByDateDesc)) {
+      if (remaining <= 0.005) break;
+      if (e.amount <= remaining + 0.005) {
+        await DB.remove('expenses', e.id); remaining = S.round2(remaining - e.amount);
+      } else {
+        await DB.put('expenses', { ...e, amount: S.round2(e.amount - remaining) }); remaining = 0;
+      }
+    }
+    State.data.expenses = await DB.all('expenses');
+    await reevaluate(S.todayISO());
   }
 
   function goalCard(g) {
@@ -687,7 +726,7 @@ const App = (function () {
     return `<div class="card">
       <div class="limit-head">
         <span class="limit-name"><span class="dot" style="background:${g.color}"></span>${esc(g.name)}${dl}</span>
-        <span class="limit-amounts"><b>${money(g.saved || 0)}</b> / ${money(g.target)}</span>
+        <span class="limit-amounts"><b>${money(st.saved)}</b> / ${money(g.target)}</span>
       </div>
       <div class="bar" style="margin-top:10px"><span style="width:${Math.round(st.percent)}%"></span></div>
       <div class="limit-foot">
@@ -696,11 +735,11 @@ const App = (function () {
       </div>
       <form data-goal-contrib="${g.id}" class="form-row" style="margin-top:12px;align-items:flex-end">
         <div class="field" style="margin-bottom:0;flex:1"><input name="amount" class="amount-input" inputmode="decimal" step="0.01" min="0.01" placeholder="Montant"></div>
-        <button type="submit" name="op" value="add" class="btn btn-sm">Ajouter</button>
-        <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Retirer</button>
+        <button type="submit" name="op" value="add" class="btn btn-sm">Mettre de cote</button>
+        <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Reprendre</button>
       </form>
-      <div class="limit-foot" style="margin-top:8px"><span></span><span class="row-actions">
-        <a class="btn btn-ghost btn-sm" href="#/goal/${g.id}">✏️</a></span></div>
+      <div class="limit-foot" style="margin-top:8px"><span class="helptext" style="margin:0">Sort du solde disponible (depense « Epargne »)</span>
+        <span class="row-actions"><a class="btn btn-ghost btn-sm" href="#/goal/${g.id}">✏️</a></span></div>
     </div>`;
   }
 
@@ -726,10 +765,8 @@ const App = (function () {
             const withdraw = e.submitter && e.submitter.value === 'withdraw';
             const g = State.data.goals.find((x) => x.id === Number(f.getAttribute('data-goal-contrib')));
             if (!g) return;
-            const saved = S.round2(Math.max(0, (g.saved || 0) + (withdraw ? -amount : amount)));
-            await DB.put('goals', { ...g, saved });
-            State.data.goals = await DB.all('goals');
-            flash('success', `${money(amount)} ${withdraw ? 'retire de' : 'ajoute a'} « ${g.name} ».`);
+            if (withdraw) { await goalWithdraw(g, amount); flash('success', `${money(amount)} repris de « ${g.name} ».`); }
+            else { await goalContribute(g, amount); flash('success', `${money(amount)} mis de cote pour « ${g.name} ».`); }
             go('#/goals');
           });
         });
@@ -756,7 +793,8 @@ const App = (function () {
             <span class="helptext">saving, home, school, health, transport, family, other</span></div>
         </div>
         ${!item ? `<div class="field" style="margin-bottom:0"><label>Deja epargne (optionnel)</label>
-          <input name="saved" inputmode="decimal" step="0.01" min="0" placeholder="0"></div>` : ''}
+          <input name="saved" inputmode="decimal" step="0.01" min="0" placeholder="0">
+          <span class="helptext">Enregistre comme une depense « Epargne » (sort du solde disponible).</span></div>` : ''}
         <div class="errorlist" data-err hidden></div>
       </div>
       <button class="btn btn-block" style="margin-bottom:10px">${item ? 'Enregistrer' : "Creer l'objectif"}</button>
@@ -777,20 +815,29 @@ const App = (function () {
           const rec = {
             name, target, deadline: fd.get('deadline') || null,
             color: fd.get('color') || '#0f766e', icon: (fd.get('icon') || 'saving').trim(),
-            saved: item ? (item.saved || 0) : S.round2(Math.max(0, parseFloat(fd.get('saved')) || 0)),
             archived: item ? item.archived : false,
             createdAt: item ? item.createdAt : Date.now(),
           };
-          if (item) { rec.id = item.id; await DB.put('goals', rec); } else { await DB.add('goals', rec); }
-          State.data.goals = await DB.all('goals');
+          if (item) {
+            rec.id = item.id; await DB.put('goals', rec);
+            State.data.goals = await DB.all('goals');
+          } else {
+            const created = await DB.add('goals', rec);
+            State.data.goals = await DB.all('goals');
+            const initial = S.round2(Math.max(0, parseFloat(fd.get('saved')) || 0));
+            if (initial > 0) await goalContribute(created, initial);
+          }
           flash('success', item ? 'Objectif mis a jour.' : 'Objectif cree.');
           go('#/goals');
         });
         const del = root.querySelector('[data-del-goal]');
         if (del) del.addEventListener('submit', async (e) => {
           e.preventDefault();
-          if (!await confirmModal('Supprimer cet objectif ?')) return;
-          await DB.remove('goals', Number(del.getAttribute('data-del-goal')));
+          if (!await confirmModal("Supprimer cet objectif ? Les depenses d'epargne deja enregistrees sont conservees.")) return;
+          const gid = Number(del.getAttribute('data-del-goal'));
+          for (const ex of State.data.expenses.filter((x) => x.goalId === gid)) await DB.put('expenses', { ...ex, goalId: null });
+          await DB.remove('goals', gid);
+          State.data.expenses = await DB.all('expenses');
           State.data.goals = await DB.all('goals');
           flash('success', 'Objectif supprime.'); go('#/goals');
         });
@@ -1566,9 +1613,11 @@ const App = (function () {
       { kind: 'expense', amount: 45000, refId: catBy['Logement'], frequency: 'monthly', method: 'transfer', description: 'Loyer', note: '', startDate: S.addDays(todayIso, 3), endDate: null, nextDue: S.addDays(todayIso, 3), active: true, createdAt: Date.now(), lastRun: null },
     ]);
 
-    await DB.bulkAdd('goals', [
-      { name: "Fonds d'urgence", target: 500000, saved: 180000, deadline: null, color: '#0f766e', icon: 'saving', archived: false, createdAt: Date.now() },
-      { name: 'Rentree scolaire', target: 150000, saved: 150000, deadline: S.addDays(todayIso, 45), color: '#6366f1', icon: 'school', archived: false, createdAt: Date.now() - 1 },
+    const g1 = await DB.add('goals', { name: "Fonds d'urgence", target: 500000, deadline: null, color: '#0f766e', icon: 'saving', archived: false, createdAt: Date.now() });
+    const g2 = await DB.add('goals', { name: 'Rentree scolaire', target: 150000, deadline: S.addDays(todayIso, 45), color: '#6366f1', icon: 'school', archived: false, createdAt: Date.now() - 1 });
+    await DB.bulkAdd('expenses', [
+      { amount: 180000, categoryId: catBy['Epargne'], description: "Epargne : Fonds d'urgence", date: S.addDays(todayIso, -20), method: 'transfer', note: '', goalId: g1.id, createdAt: Date.now() },
+      { amount: 150000, categoryId: catBy['Epargne'], description: 'Epargne : Rentree scolaire', date: S.addDays(todayIso, -30), method: 'transfer', note: '', goalId: g2.id, createdAt: Date.now() - 1 },
     ]);
   }
 
