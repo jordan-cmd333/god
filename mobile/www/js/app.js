@@ -64,7 +64,7 @@ const App = (function () {
 
   async function load() {
     const d = {};
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences']) {
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals']) {
       d[s] = await DB.all(s);
     }
     State.data = d;
@@ -670,6 +670,134 @@ const App = (function () {
     });
   }
 
+  // Objectifs d'epargne ----------------------------------------------------
+  // Suivi autonome : chaque objectif porte un montant epargne, ajuste a la main
+  // (Ajouter / Retirer). N'affecte pas le solde depenses/revenus.
+
+  function goalStatus(g) {
+    const target = g.target || 0;
+    const saved = g.saved || 0;
+    const percent = target > 0 ? Math.min(100, (saved / target) * 100) : (saved > 0 ? 100 : 0);
+    return { percent, remaining: S.round2(Math.max(0, target - saved)), reached: target > 0 && saved >= target };
+  }
+
+  function goalCard(g) {
+    const st = goalStatus(g);
+    const dl = g.deadline ? ` <span class="limit-period">· echeance ${fmtDate(g.deadline)}</span>` : '';
+    return `<div class="card">
+      <div class="limit-head">
+        <span class="limit-name"><span class="dot" style="background:${g.color}"></span>${esc(g.name)}${dl}</span>
+        <span class="limit-amounts"><b>${money(g.saved || 0)}</b> / ${money(g.target)}</span>
+      </div>
+      <div class="bar" style="margin-top:10px"><span style="width:${Math.round(st.percent)}%"></span></div>
+      <div class="limit-foot">
+        <span>${Math.round(st.percent)} %</span>
+        <span>${st.reached ? '<b style="color:var(--success)">Objectif atteint 🎉</b>' : `Reste ${money(st.remaining)} ${cur()}`}</span>
+      </div>
+      <form data-goal-contrib="${g.id}" class="form-row" style="margin-top:12px;align-items:flex-end">
+        <div class="field" style="margin-bottom:0;flex:1"><input name="amount" class="amount-input" inputmode="decimal" step="0.01" min="0.01" placeholder="Montant"></div>
+        <button type="submit" name="op" value="add" class="btn btn-sm">Ajouter</button>
+        <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Retirer</button>
+      </form>
+      <div class="limit-foot" style="margin-top:8px"><span></span><span class="row-actions">
+        <a class="btn btn-ghost btn-sm" href="#/goal/${g.id}">✏️</a></span></div>
+    </div>`;
+  }
+
+  Views.goals = async function () {
+    const list = State.data.goals.slice().filter((g) => !g.archived)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    let html = `<div class="btn-row" style="margin-bottom:16px">
+      <a href="#/goal/new" class="btn">＋ Nouvel objectif</a></div>`;
+    if (list.length) {
+      list.forEach((g) => html += goalCard(g));
+    } else {
+      html += `<div class="card">${emptyBlock('🐖', "Aucun objectif d'epargne.", '<a href="#/goal/new">Definir un objectif</a>')}</div>`;
+    }
+    return {
+      title: "Objectifs d'epargne", subtitle: 'Mettez de cote, suivez vos progres', html,
+      mount: (root) => {
+        root.querySelectorAll('[data-goal-contrib]').forEach((f) => {
+          const input = f.querySelector('.amount-input');
+          f.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const amount = S.round2(parseFloat(input.value));
+            if (!(amount > 0)) { input.focus(); return; }
+            const withdraw = e.submitter && e.submitter.value === 'withdraw';
+            const g = State.data.goals.find((x) => x.id === Number(f.getAttribute('data-goal-contrib')));
+            if (!g) return;
+            const saved = S.round2(Math.max(0, (g.saved || 0) + (withdraw ? -amount : amount)));
+            await DB.put('goals', { ...g, saved });
+            State.data.goals = await DB.all('goals');
+            flash('success', `${money(amount)} ${withdraw ? 'retire de' : 'ajoute a'} « ${g.name} ».`);
+            go('#/goals');
+          });
+        });
+      },
+    };
+  };
+
+  Views.goalForm = async function (id) {
+    const item = id ? State.data.goals.find((g) => g.id === id) : null;
+    const html = `<form data-form="goal">
+      <div class="card">
+        <div class="field"><label>Nom de l'objectif</label>
+          <input name="name" value="${esc(item ? item.name : '')}" placeholder="Ex : Fonds d'urgence" required></div>
+        <div class="form-row">
+          <div class="field"><label>Montant cible (${cur()})</label>
+            <input name="target" class="amount-input" inputmode="decimal" step="0.01" min="0.01"
+              value="${item && item.target != null ? item.target : ''}" placeholder="0"></div>
+          <div class="field"><label>Echeance (optionnel)</label>
+            <input type="date" name="deadline" value="${item && item.deadline ? item.deadline : ''}"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Couleur</label><input name="color" type="color" value="${item ? item.color : '#0f766e'}"></div>
+          <div class="field"><label>Icone</label><input name="icon" value="${item ? esc(item.icon) : 'saving'}">
+            <span class="helptext">saving, home, school, health, transport, family, other</span></div>
+        </div>
+        ${!item ? `<div class="field" style="margin-bottom:0"><label>Deja epargne (optionnel)</label>
+          <input name="saved" inputmode="decimal" step="0.01" min="0" placeholder="0"></div>` : ''}
+        <div class="errorlist" data-err hidden></div>
+      </div>
+      <button class="btn btn-block" style="margin-bottom:10px">${item ? 'Enregistrer' : "Creer l'objectif"}</button>
+    </form>
+    ${item ? `<form data-del-goal="${item.id}" style="margin-top:16px">
+      <button class="btn btn-danger btn-block">Supprimer</button></form>` : ''}`;
+    return {
+      title: item ? "Modifier l'objectif" : 'Nouvel objectif', subtitle: 'Fixez un montant a atteindre', html,
+      mount: (root) => {
+        root.querySelector('[data-form="goal"]').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const name = (fd.get('name') || '').trim();
+          const target = S.round2(parseFloat(fd.get('target')));
+          const err = root.querySelector('[data-err]');
+          if (!name) { err.hidden = false; err.textContent = 'Nom requis.'; return; }
+          if (!(target > 0)) { err.hidden = false; err.textContent = 'Montant cible invalide.'; return; }
+          const rec = {
+            name, target, deadline: fd.get('deadline') || null,
+            color: fd.get('color') || '#0f766e', icon: (fd.get('icon') || 'saving').trim(),
+            saved: item ? (item.saved || 0) : S.round2(Math.max(0, parseFloat(fd.get('saved')) || 0)),
+            archived: item ? item.archived : false,
+            createdAt: item ? item.createdAt : Date.now(),
+          };
+          if (item) { rec.id = item.id; await DB.put('goals', rec); } else { await DB.add('goals', rec); }
+          State.data.goals = await DB.all('goals');
+          flash('success', item ? 'Objectif mis a jour.' : 'Objectif cree.');
+          go('#/goals');
+        });
+        const del = root.querySelector('[data-del-goal]');
+        if (del) del.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          if (!await confirmModal('Supprimer cet objectif ?')) return;
+          await DB.remove('goals', Number(del.getAttribute('data-del-goal')));
+          State.data.goals = await DB.all('goals');
+          flash('success', 'Objectif supprime.'); go('#/goals');
+        });
+      },
+    };
+  };
+
   // Historique (depenses / revenus) ----------------------------------------
 
   function historyView(opts) {
@@ -1015,6 +1143,7 @@ const App = (function () {
       incomes: d.incomes.length, earned: S.sum(d.incomes, 'amount'),
       categories: d.categories.length, sources: d.sources.length, limits: d.limits.length,
       recurrences: d.recurrences.filter((r) => r.active).length,
+      goals: d.goals.filter((g) => !g.archived).length,
     };
     const hasPin = !!(await DB.metaGet('pin', null));
     const html = `
@@ -1039,7 +1168,10 @@ const App = (function () {
           <a class="btn btn-ghost btn-sm" href="#/sources">Gerer</a></li>
         <li class="row"><span class="row-icon" style="background:#7c3aed">🔁</span>
           <span class="row-main"><span class="t">Transactions recurrentes</span><span class="s">${stats.recurrences} active${stats.recurrences > 1 ? 's' : ''}</span></span>
-          <a class="btn btn-ghost btn-sm" href="#/recurrences">Gerer</a></li></ul></div>
+          <a class="btn btn-ghost btn-sm" href="#/recurrences">Gerer</a></li>
+        <li class="row"><span class="row-icon" style="background:#0ea5e9">🐖</span>
+          <span class="row-main"><span class="t">Objectifs d'epargne</span><span class="s">${stats.goals} objectif${stats.goals > 1 ? 's' : ''}</span></span>
+          <a class="btn btn-ghost btn-sm" href="#/goals">Gerer</a></li></ul></div>
 
       <div class="card"><h2 class="card-title">Mes donnees</h2><div class="stat-grid">
         <div class="stat"><div class="k">Depenses</div><div class="v">${stats.expenses}</div></div>
@@ -1132,7 +1264,7 @@ const App = (function () {
 
   async function buildBackup() {
     const dump = { version: 1, exportedAt: new Date().toISOString(), meta: { currency: State.currency, threshold: State.threshold } };
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences']) dump[s] = await DB.all(s);
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals']) dump[s] = await DB.all(s);
     return dump;
   }
 
@@ -1213,7 +1345,7 @@ const App = (function () {
     try {
       const dump = JSON.parse(await file.text());
       await DB.clearData(); // remplace les donnees, mais conserve licence / PIN / essai (store meta)
-      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences']) {
+      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals']) {
         if (Array.isArray(dump[s])) await DB.bulkAdd(s, dump[s]);
       }
       if (dump.meta) { await DB.metaSet('currency', dump.meta.currency || 'FCFA'); await DB.metaSet('threshold', dump.meta.threshold || 80); }
@@ -1433,6 +1565,11 @@ const App = (function () {
       { kind: 'expense', amount: 9000, refId: catBy['Communication'], frequency: 'monthly', method: 'mobile', description: 'Forfait telephone', note: '', startDate: S.addDays(todayIso, -2), endDate: null, nextDue: S.addDays(todayIso, -2), active: true, createdAt: Date.now(), lastRun: null },
       { kind: 'expense', amount: 45000, refId: catBy['Logement'], frequency: 'monthly', method: 'transfer', description: 'Loyer', note: '', startDate: S.addDays(todayIso, 3), endDate: null, nextDue: S.addDays(todayIso, 3), active: true, createdAt: Date.now(), lastRun: null },
     ]);
+
+    await DB.bulkAdd('goals', [
+      { name: "Fonds d'urgence", target: 500000, saved: 180000, deadline: null, color: '#0f766e', icon: 'saving', archived: false, createdAt: Date.now() },
+      { name: 'Rentree scolaire', target: 150000, saved: 150000, deadline: S.addDays(todayIso, 45), color: '#6366f1', icon: 'school', archived: false, createdAt: Date.now() - 1 },
+    ]);
   }
 
   // --- Routeur ------------------------------------------------------------
@@ -1459,6 +1596,9 @@ const App = (function () {
     [/^#\/recurrences/, () => Views.recurrences()],
     [/^#\/recurrence\/new/, () => Views.recurrenceForm(null)],
     [/^#\/recurrence\/(\d+)/, (m) => Views.recurrenceForm(Number(m[1]))],
+    [/^#\/goals/, () => Views.goals()],
+    [/^#\/goal\/new/, () => Views.goalForm(null)],
+    [/^#\/goal\/(\d+)/, (m) => Views.goalForm(Number(m[1]))],
     [/^#\/categories/, () => Views.categories()],
     [/^#\/category\/(\d+)/, (m) => refEditView({ store: 'categories', base: '#/categories', tab: null }, Number(m[1]))],
     [/^#\/sources/, () => Views.sources()],
