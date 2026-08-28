@@ -54,7 +54,8 @@ def export_payload(user):
         'expenses': [
             {'amount': str(e.amount), 'category_id': e.category_id,
              'description': e.description, 'date': e.date.isoformat(),
-             'payment_method': e.payment_method, 'note': e.note}
+             'payment_method': e.payment_method, 'note': e.note,
+             'goal_id': e.goal_id}
             for e in Expense.objects.filter(user=user).order_by('id')
         ],
         'incomes': [
@@ -79,8 +80,7 @@ def export_payload(user):
             for r in RecurringTransaction.objects.filter(user=user).order_by('id')
         ],
         'goals': [
-            {'name': g.name, 'target_amount': str(g.target_amount),
-             'saved_amount': str(g.saved_amount),
+            {'id': g.id, 'name': g.name, 'target_amount': str(g.target_amount),
              'deadline': g.deadline.isoformat() if g.deadline else None,
              'color': g.color, 'icon': g.icon, 'is_archived': g.is_archived}
             for g in SavingsGoal.objects.filter(user=user).order_by('id')
@@ -128,14 +128,26 @@ def import_payload(user, data):
             icon=s.get('icon', 'other'), is_archived=bool(s.get('is_archived', False)),
         )
 
+    # Objectifs avant les depenses : celles-ci peuvent y etre liees (goal_id).
+    goal_map = {}
+    for g in data.get('goals', []):
+        goal_map[g.get('id')] = SavingsGoal.objects.create(
+            user=user, name=g['name'], target_amount=Decimal(str(g['target_amount'])),
+            deadline=date.fromisoformat(g['deadline']) if g.get('deadline') else None,
+            color=g.get('color', '#0f766e'), icon=g.get('icon', 'saving'),
+            is_archived=bool(g.get('is_archived', False)),
+        )
+
     for e in data.get('expenses', []):
         category = cat_map.get(e.get('category_id'))
         if category is None:
             continue  # depense orpheline (categorie absente du fichier) : ignoree
+        gid = e.get('goal_id')
         Expense.objects.create(
             user=user, category=category, amount=Decimal(str(e['amount'])),
             description=e.get('description', ''), date=date.fromisoformat(e['date']),
             payment_method=e.get('payment_method', 'cash'), note=e.get('note', ''),
+            goal=goal_map.get(gid) if gid is not None else None,
         )
 
     for i in data.get('incomes', []):
@@ -170,15 +182,6 @@ def import_payload(user, data):
             next_due=date.fromisoformat(r['next_due']),
             is_active=bool(r.get('is_active', True)),
             last_run=date.fromisoformat(r['last_run']) if r.get('last_run') else None,
-        )
-
-    for g in data.get('goals', []):
-        SavingsGoal.objects.create(
-            user=user, name=g['name'], target_amount=Decimal(str(g['target_amount'])),
-            saved_amount=Decimal(str(g.get('saved_amount', '0'))),
-            deadline=date.fromisoformat(g['deadline']) if g.get('deadline') else None,
-            color=g.get('color', '#0f766e'), icon=g.get('icon', 'saving'),
-            is_archived=bool(g.get('is_archived', False)),
         )
 
     # Preferences + horodatage : les donnees correspondent desormais a cette

@@ -272,10 +272,10 @@ class SavingsGoalForm(forms.ModelForm):
             self.fields.pop('initial_saved')       # via Ajouter / Retirer
 
     def save(self, commit=True):
+        # Le montant epargne est derive des depenses « Epargne » liees : la vue
+        # enregistre le montant initial eventuel via services.contribute_to_goal.
         goal = super().save(commit=False)
         goal.user = self.user
-        if not goal.pk:
-            goal.saved_amount = self.cleaned_data.get('initial_saved') or 0
         if commit:
             goal.save()
         return goal

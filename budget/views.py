@@ -639,7 +639,10 @@ def goal_list(request):
 def goal_create(request):
     form = SavingsGoalForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
-        form.save()
+        goal = form.save()
+        initial = form.cleaned_data.get('initial_saved')
+        if initial and initial > 0:
+            services.contribute_to_goal(goal, initial)
         messages.success(request, 'Objectif cree.')
         return redirect('goal_list')
     return render(request, 'goal_form.html', {'form': form, 'is_edit': False})
@@ -659,8 +662,9 @@ def goal_edit(request, pk):
 @login_required
 @require_POST
 def goal_delete(request, pk):
+    # Les depenses d'epargne liees sont conservees (FK SET_NULL), simplement deliees.
     get_object_or_404(SavingsGoal, pk=pk, user=request.user).delete()
-    messages.success(request, 'Objectif supprime.')
+    messages.success(request, "Objectif supprime. Les depenses d'epargne sont conservees.")
     return redirect('goal_list')
 
 
@@ -676,12 +680,11 @@ def goal_contribute(request, pk):
         messages.error(request, 'Montant invalide.')
         return redirect('goal_list')
     if request.POST.get('op') == 'withdraw':
-        goal.saved_amount = max(Decimal('0'), goal.saved_amount - amount)
-        messages.success(request, f'{amount} retire de « {goal.name} ».')
+        services.withdraw_from_goal(goal, amount)
+        messages.success(request, f'{amount} repris de « {goal.name} ».')
     else:
-        goal.saved_amount = goal.saved_amount + amount
-        messages.success(request, f'{amount} ajoute a « {goal.name} ».')
-    goal.save(update_fields=['saved_amount'])
+        services.contribute_to_goal(goal, amount)
+        messages.success(request, f'{amount} mis de cote pour « {goal.name} ».')
     return redirect('goal_list')
 
 

@@ -578,3 +578,45 @@ def skip_recurrence(rec):
     """Avance la recurrence sans rien creer (echeance passee)."""
     rec.next_due = advance_occurrence(rec.next_due, rec.frequency, rec.start_date.day)
     rec.save(update_fields=['next_due'])
+
+
+# --------------------------------------------------------------------------
+# Objectifs d'epargne (contributions liees a une depense « Epargne »)
+# --------------------------------------------------------------------------
+
+def savings_category(user):
+    """Categorie « Epargne » de l'utilisateur (creee au besoin)."""
+    cat = (Category.objects.filter(user=user, is_archived=False, icon='saving').first()
+           or Category.objects.filter(user=user, is_archived=False, name__iexact='Epargne').first())
+    if cat is None:
+        cat = Category.objects.create(user=user, name='Epargne', color='#22c55e', icon='saving')
+    return cat
+
+
+def contribute_to_goal(goal, amount):
+    """Met de cote : cree une depense « Epargne » liee (sort du solde disponible)."""
+    Expense.objects.create(
+        user=goal.user, category=savings_category(goal.user), amount=amount,
+        date=today(), payment_method=Expense.PaymentMethod.TRANSFER,
+        description=f'Epargne : {goal.name}', goal=goal,
+    )
+    evaluate_alerts(goal.user, today())
+    refresh_reports(goal.user, today())
+
+
+def withdraw_from_goal(goal, amount):
+    """Reprend de l'epargne : retire les dernieres contributions (l'argent
+    revient dans le solde disponible). Clampe au montant epargne."""
+    remaining = amount
+    for e in goal.contributions.order_by('-date', '-created_at'):
+        if remaining <= 0:
+            break
+        if e.amount <= remaining:
+            remaining -= e.amount
+            e.delete()
+        else:
+            e.amount -= remaining
+            e.save(update_fields=['amount'])
+            remaining = ZERO
+    evaluate_alerts(goal.user, today())
+    refresh_reports(goal.user, today())

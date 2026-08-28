@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.functional import cached_property
 
 
 class Profile(models.Model):
@@ -108,6 +109,11 @@ class Expense(models.Model):
         choices=PaymentMethod.choices, default=PaymentMethod.CASH,
     )
     note = models.TextField('note', blank=True)
+    # Renseigne quand la depense est une mise de cote vers un objectif d'epargne.
+    goal = models.ForeignKey(
+        'SavingsGoal', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='contributions', verbose_name='objectif',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -433,7 +439,6 @@ class SavingsGoal(models.Model):
         'montant cible', max_digits=12, decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))],
     )
-    saved_amount = models.DecimalField('deja epargne', max_digits=12, decimal_places=2, default=0)
     deadline = models.DateField('echeance', null=True, blank=True)
     color = models.CharField('couleur', max_length=9, default='#0f766e')
     icon = models.CharField('icone', max_length=20, default='saving')
@@ -446,18 +451,23 @@ class SavingsGoal(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'{self.name} : {self.saved_amount} / {self.target_amount}'
+        return f'{self.name} : {self.saved} / {self.target_amount}'
+
+    @cached_property
+    def saved(self):
+        """Montant epargne = somme des depenses « Epargne » liees a l'objectif."""
+        return self.contributions.aggregate(t=models.Sum('amount'))['t'] or Decimal('0')
 
     @property
     def percent(self):
         if self.target_amount and self.target_amount > 0:
-            return min(100.0, float(self.saved_amount) / float(self.target_amount) * 100)
-        return 100.0 if self.saved_amount > 0 else 0.0
+            return min(100.0, float(self.saved) / float(self.target_amount) * 100)
+        return 100.0 if self.saved > 0 else 0.0
 
     @property
     def remaining(self):
-        return max(Decimal('0'), self.target_amount - self.saved_amount)
+        return max(Decimal('0'), self.target_amount - self.saved)
 
     @property
     def reached(self):
-        return self.target_amount > 0 and self.saved_amount >= self.target_amount
+        return self.target_amount > 0 and self.saved >= self.target_amount

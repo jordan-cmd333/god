@@ -19,7 +19,7 @@
         {{ goal.name }}
         {% if goal.deadline %}<span class="limit-period">· echeance {{ goal.deadline|date:"d/m/Y" }}</span>{% endif %}
       </span>
-      <span class="limit-amounts"><b>{{ goal.saved_amount|money }}</b> / {{ goal.target_amount|money }}</span>
+      <span class="limit-amounts"><b>{{ goal.saved|money }}</b> / {{ goal.target_amount|money }}</span>
     </div>
 
     <div class="bar" style="margin-top:10px">
@@ -44,12 +44,12 @@
         <input name="amount" class="amount-input" inputmode="decimal"
                step="0.01" min="0.01" placeholder="Montant">
       </div>
-      <button type="submit" name="op" value="add" class="btn btn-sm">Ajouter</button>
-      <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Retirer</button>
+      <button type="submit" name="op" value="add" class="btn btn-sm">Mettre de cote</button>
+      <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Reprendre</button>
     </form>
 
     <div class="limit-foot" style="margin-top:8px">
-      <span></span>
+      <span class="helptext" style="margin:0">Sort du solde disponible (depense « Epargne »)</span>
       <span class="row-actions">
         <a class="btn btn-ghost btn-sm" href="{% url 'goal_edit' goal.pk %}">✏️</a>
       </span>
