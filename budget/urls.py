@@ -64,6 +64,13 @@ urlpatterns = [
     path('recurrences/<int:pk>/passer/', views.recurrence_skip, name='recurrence_skip'),
     path('recurrences/<int:pk>/activer/', views.recurrence_toggle, name='recurrence_toggle'),
 
+    # Objectifs d'epargne
+    path('objectifs/', views.goal_list, name='goal_list'),
+    path('objectifs/ajouter/', views.goal_create, name='goal_create'),
+    path('objectifs/<int:pk>/modifier/', views.goal_edit, name='goal_edit'),
+    path('objectifs/<int:pk>/supprimer/', views.goal_delete, name='goal_delete'),
+    path('objectifs/<int:pk>/contribuer/', views.goal_contribute, name='goal_contribute'),
+
     # Parametres et API
     path('parametres/', views.settings_view, name='settings'),
     path('api/resume/', views.api_summary, name='api_summary'),

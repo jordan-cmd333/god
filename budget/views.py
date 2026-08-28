@@ -2,7 +2,7 @@
 
 import json
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth import login
@@ -16,11 +16,12 @@ from django.views.decorators.http import require_POST
 from . import backup, exports, services
 from .forms import (
     BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm, IncomeFilterForm,
-    IncomeForm, IncomeSourceForm, ProfileForm, RecurringTransactionForm, SignUpForm,
+    IncomeForm, IncomeSourceForm, ProfileForm, RecurringTransactionForm,
+    SavingsGoalForm, SignUpForm,
 )
 from .models import (
     Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
-    RecurringTransaction,
+    RecurringTransaction, SavingsGoal,
 )
 
 
@@ -624,6 +625,67 @@ def recurrence_toggle(request, pk):
 
 
 # --------------------------------------------------------------------------
+# Objectifs d'epargne
+# --------------------------------------------------------------------------
+
+@login_required
+def goal_list(request):
+    return render(request, 'goals.html', {
+        'goals': SavingsGoal.objects.filter(user=request.user, is_archived=False),
+    })
+
+
+@login_required
+def goal_create(request):
+    form = SavingsGoalForm(request.POST or None, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Objectif cree.')
+        return redirect('goal_list')
+    return render(request, 'goal_form.html', {'form': form, 'is_edit': False})
+
+
+@login_required
+def goal_edit(request, pk):
+    goal = get_object_or_404(SavingsGoal, pk=pk, user=request.user)
+    form = SavingsGoalForm(request.POST or None, instance=goal, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Objectif mis a jour.')
+        return redirect('goal_list')
+    return render(request, 'goal_form.html', {'form': form, 'is_edit': True, 'goal': goal})
+
+
+@login_required
+@require_POST
+def goal_delete(request, pk):
+    get_object_or_404(SavingsGoal, pk=pk, user=request.user).delete()
+    messages.success(request, 'Objectif supprime.')
+    return redirect('goal_list')
+
+
+@login_required
+@require_POST
+def goal_contribute(request, pk):
+    goal = get_object_or_404(SavingsGoal, pk=pk, user=request.user)
+    try:
+        amount = Decimal(request.POST.get('amount') or '0')
+    except InvalidOperation:
+        amount = Decimal('0')
+    if amount <= 0:
+        messages.error(request, 'Montant invalide.')
+        return redirect('goal_list')
+    if request.POST.get('op') == 'withdraw':
+        goal.saved_amount = max(Decimal('0'), goal.saved_amount - amount)
+        messages.success(request, f'{amount} retire de « {goal.name} ».')
+    else:
+        goal.saved_amount = goal.saved_amount + amount
+        messages.success(request, f'{amount} ajoute a « {goal.name} ».')
+    goal.save(update_fields=['saved_amount'])
+    return redirect('goal_list')
+
+
+# --------------------------------------------------------------------------
 # Parametres
 # --------------------------------------------------------------------------
 
@@ -651,6 +713,8 @@ def settings_view(request):
                       .aggregate(t=Sum('amount'))['t'] or Decimal('0'),
             'recurrences': RecurringTransaction.objects.filter(
                 user=request.user, is_active=True).count(),
+            'goals': SavingsGoal.objects.filter(
+                user=request.user, is_archived=False).count(),
         },
     })
 

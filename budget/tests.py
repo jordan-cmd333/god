@@ -12,7 +12,7 @@ from django.urls import reverse
 from . import services
 from .models import (
     Alert, BudgetLimit, Category, Expense, Income, IncomeSource,
-    RecurringTransaction, Report,
+    RecurringTransaction, Report, SavingsGoal,
 )
 
 
@@ -798,3 +798,77 @@ class RecurrenceTests(BaseCase):
         self._recur(description='Loyer', next_due=self.today)
         payload = json.loads(self.client.get(reverse('export_backup')).content)
         self.assertTrue(any(r['description'] == 'Loyer' for r in payload['recurrences']))
+
+
+class GoalTests(BaseCase):
+    """Objectifs d'epargne : creation, contributions, progression."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+
+    def _goal(self, **kw):
+        defaults = dict(user=self.user, name='Fonds', target_amount=Decimal('100000'),
+                        saved_amount=Decimal('0'))
+        defaults.update(kw)
+        return SavingsGoal.objects.create(**defaults)
+
+    def test_creation_via_formulaire(self):
+        response = self.client.post(reverse('goal_create'), {
+            'name': 'Achat moto', 'target_amount': '800000',
+            'color': '#0f766e', 'icon': 'saving', 'initial_saved': '100000',
+        })
+        self.assertRedirects(response, reverse('goal_list'))
+        goal = SavingsGoal.objects.get(user=self.user)
+        self.assertEqual(goal.saved_amount, Decimal('100000'))
+        self.assertEqual(goal.target_amount, Decimal('800000'))
+
+    def test_ajouter_augmente_le_montant_epargne(self):
+        goal = self._goal(saved_amount=Decimal('20000'))
+        self.client.post(reverse('goal_contribute', args=[goal.pk]),
+                         {'amount': '15000', 'op': 'add'})
+        goal.refresh_from_db()
+        self.assertEqual(goal.saved_amount, Decimal('35000'))
+
+    def test_retirer_ne_descend_pas_sous_zero(self):
+        goal = self._goal(saved_amount=Decimal('20000'))
+        self.client.post(reverse('goal_contribute', args=[goal.pk]),
+                         {'amount': '999999', 'op': 'withdraw'})
+        goal.refresh_from_db()
+        self.assertEqual(goal.saved_amount, Decimal('0'))
+
+    def test_proprietes_de_progression(self):
+        goal = self._goal(target_amount=Decimal('200000'), saved_amount=Decimal('50000'))
+        self.assertEqual(round(goal.percent), 25)
+        self.assertEqual(goal.remaining, Decimal('150000'))
+        self.assertFalse(goal.reached)
+        goal.saved_amount = Decimal('200000')
+        self.assertTrue(goal.reached)
+        self.assertEqual(goal.remaining, Decimal('0'))
+
+    def test_la_liste_affiche_les_objectifs(self):
+        self._goal(name='Rentree scolaire', target_amount=Decimal('150000'),
+                   saved_amount=Decimal('150000'))
+        response = self.client.get(reverse('goal_list'))
+        self.assertContains(response, 'Rentree scolaire')
+        self.assertContains(response, 'Objectif atteint')
+
+    def test_les_objectifs_sont_isoles_par_utilisateur(self):
+        bob = User.objects.create_user('bob', password='motdepasse-123')
+        goal = SavingsGoal.objects.create(user=bob, name='Bob', target_amount=Decimal('100'))
+        response = self.client.post(reverse('goal_contribute', args=[goal.pk]),
+                                    {'amount': '10', 'op': 'add'})
+        self.assertEqual(response.status_code, 404)
+        goal.refresh_from_db()
+        self.assertEqual(goal.saved_amount, Decimal('0'))
+
+    def test_les_vues_exigent_une_connexion(self):
+        self.client.logout()
+        response = self.client.get(reverse('goal_list'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/connexion/', response['Location'])
+
+    def test_la_sauvegarde_inclut_les_objectifs(self):
+        self._goal(name='Voyage', saved_amount=Decimal('12000'))
+        payload = json.loads(self.client.get(reverse('export_backup')).content)
+        self.assertTrue(any(g['name'] == 'Voyage' for g in payload['goals']))

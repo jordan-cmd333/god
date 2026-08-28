@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Objectifs d'epargne — Budget Control{% endblock %}
+{% block page_title %}Objectifs d'epargne{% endblock %}
+{% block page_subtitle %}Mettez de cote, suivez vos progres{% endblock %}
+
+{% block content %}
+
+<div class="btn-row" style="margin-bottom:16px">
+  <a href="{% url 'goal_create' %}" class="btn">＋ Nouvel objectif</a>
+</div>
+
+{% for goal in goals %}
+  <div class="card">
+    <div class="limit-head">
+      <span class="limit-name">
+        <span class="dot" style="background:{{ goal.color }}"></span>
+        {{ goal.name }}
+        {% if goal.deadline %}<span class="limit-period">· echeance {{ goal.deadline|date:"d/m/Y" }}</span>{% endif %}
+      </span>
+      <span class="limit-amounts"><b>{{ goal.saved_amount|money }}</b> / {{ goal.target_amount|money }}</span>
+    </div>
+
+    <div class="bar" style="margin-top:10px">
+      <span style="width:{{ goal.percent|floatformat:0 }}%"></span>
+    </div>
+
+    <div class="limit-foot">
+      <span>{{ goal.percent|floatformat:0 }} %</span>
+      <span>
+        {% if goal.reached %}
+          <b style="color:var(--success)">Objectif atteint 🎉</b>
+        {% else %}
+          Reste {{ goal.remaining|money }} {{ currency }}
+        {% endif %}
+      </span>
+    </div>
+
+    <form method="post" action="{% url 'goal_contribute' goal.pk %}"
+          class="form-row" style="margin-top:12px;align-items:flex-end">
+      {% csrf_token %}
+      <div class="field" style="margin-bottom:0;flex:1">
+        <input name="amount" class="amount-input" inputmode="decimal"
+               step="0.01" min="0.01" placeholder="Montant">
+      </div>
+      <button type="submit" name="op" value="add" class="btn btn-sm">Ajouter</button>
+      <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Retirer</button>
+    </form>
+
+    <div class="limit-foot" style="margin-top:8px">
+      <span></span>
+      <span class="row-actions">
+        <a class="btn btn-ghost btn-sm" href="{% url 'goal_edit' goal.pk %}">✏️</a>
+      </span>
+    </div>
+  </div>
+{% empty %}
+  <div class="card">
+    <div class="empty">
+      <span class="big">🐖</span>
+      Aucun objectif d'epargne.<br>
+      Definissez-en un ci-dessus (fonds d'urgence, achat, rentree...).
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

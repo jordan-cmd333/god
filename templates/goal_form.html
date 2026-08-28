@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvel{% endif %} objectif — Budget Control{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier l'objectif{% else %}Nouvel objectif{% endif %}{% endblock %}
+{% block page_subtitle %}Fixez un montant a atteindre{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  <div class="card">
+    <div class="field">
+      <label for="{{ form.name.id_for_label }}">Nom de l'objectif</label>
+      {{ form.name }}
+      {{ form.name.errors }}
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.target_amount.id_for_label }}">Montant cible ({{ currency }})</label>
+        {{ form.target_amount }}
+        {{ form.target_amount.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.deadline.id_for_label }}">Echeance (optionnel)</label>
+        {{ form.deadline }}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.color.id_for_label }}">Couleur</label>
+        {{ form.color }}
+      </div>
+      <div class="field">
+        <label for="{{ form.icon.id_for_label }}">Icone</label>
+        {{ form.icon }}
+        <span class="helptext">saving, home, school, health, transport, family, other</span>
+      </div>
+    </div>
+
+    {% if form.initial_saved %}
+      <div class="field" style="margin-bottom:0">
+        <label for="{{ form.initial_saved.id_for_label }}">Deja epargne (optionnel)</label>
+        {{ form.initial_saved }}
+      </div>
+    {% endif %}
+  </div>
+
+  <button type="submit" class="btn btn-block" style="margin-bottom:10px">
+    {% if is_edit %}Enregistrer{% else %}Creer l'objectif{% endif %}
+  </button>
+</form>
+
+{% if is_edit %}
+  <form method="post" action="{% url 'goal_delete' goal.pk %}" style="margin-top:16px"
+        onsubmit="return confirm('Supprimer cet objectif ?')">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block">Supprimer cet objectif</button>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var input = document.querySelector('.amount-input');
+    if (input && !input.value) input.focus();
+  })();
+</script>
+{% endblock %}

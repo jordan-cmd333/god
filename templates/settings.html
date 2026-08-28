@@ -50,6 +50,14 @@
       </span>
       <a class="btn btn-ghost btn-sm" href="{% url 'recurrence_list' %}">Gerer</a>
     </li>
+    <li class="row">
+      <span class="row-icon" style="background:#0ea5e9">🐖</span>
+      <span class="row-main">
+        <span class="t">Objectifs d'epargne</span>
+        <span class="s">{{ stats.goals }} objectif{{ stats.goals|pluralize }}</span>
+      </span>
+      <a class="btn btn-ghost btn-sm" href="{% url 'goal_list' %}">Gerer</a>
+    </li>
   </ul>
 </div>
 

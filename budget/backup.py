@@ -18,7 +18,7 @@ from django.utils.dateparse import parse_datetime
 
 from .models import (
     Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
-    RecurringTransaction, Report,
+    RecurringTransaction, Report, SavingsGoal,
 )
 
 FORMAT_VERSION = 1
@@ -78,6 +78,13 @@ def export_payload(user):
              'last_run': r.last_run.isoformat() if r.last_run else None}
             for r in RecurringTransaction.objects.filter(user=user).order_by('id')
         ],
+        'goals': [
+            {'name': g.name, 'target_amount': str(g.target_amount),
+             'saved_amount': str(g.saved_amount),
+             'deadline': g.deadline.isoformat() if g.deadline else None,
+             'color': g.color, 'icon': g.icon, 'is_archived': g.is_archived}
+            for g in SavingsGoal.objects.filter(user=user).order_by('id')
+        ],
     }
 
 
@@ -103,6 +110,7 @@ def import_payload(user, data):
     Income.objects.filter(user=user).delete()
     BudgetLimit.objects.filter(user=user).delete()
     RecurringTransaction.objects.filter(user=user).delete()  # FK PROTECT -> cat/source
+    SavingsGoal.objects.filter(user=user).delete()
     Category.objects.filter(user=user).delete()
     IncomeSource.objects.filter(user=user).delete()
 
@@ -162,6 +170,15 @@ def import_payload(user, data):
             next_due=date.fromisoformat(r['next_due']),
             is_active=bool(r.get('is_active', True)),
             last_run=date.fromisoformat(r['last_run']) if r.get('last_run') else None,
+        )
+
+    for g in data.get('goals', []):
+        SavingsGoal.objects.create(
+            user=user, name=g['name'], target_amount=Decimal(str(g['target_amount'])),
+            saved_amount=Decimal(str(g.get('saved_amount', '0'))),
+            deadline=date.fromisoformat(g['deadline']) if g.get('deadline') else None,
+            color=g.get('color', '#0f766e'), icon=g.get('icon', 'saving'),
+            is_archived=bool(g.get('is_archived', False)),
         )
 
     # Preferences + horodatage : les donnees correspondent desormais a cette

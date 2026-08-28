@@ -419,3 +419,45 @@ class RecurringTransaction(models.Model):
     def ref(self):
         """Categorie (depense) ou source (revenu) selon le type."""
         return self.source if self.kind == self.Kind.INCOME else self.category
+
+
+class SavingsGoal(models.Model):
+    """Objectif d'epargne : un montant a atteindre, suivi a la main (ajout /
+    retrait). Suivi autonome, sans impact sur le solde depenses/revenus."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='goals'
+    )
+    name = models.CharField('nom', max_length=80)
+    target_amount = models.DecimalField(
+        'montant cible', max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    saved_amount = models.DecimalField('deja epargne', max_digits=12, decimal_places=2, default=0)
+    deadline = models.DateField('echeance', null=True, blank=True)
+    color = models.CharField('couleur', max_length=9, default='#0f766e')
+    icon = models.CharField('icone', max_length=20, default='saving')
+    is_archived = models.BooleanField('archive', default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "objectif d'epargne"
+        verbose_name_plural = "objectifs d'epargne"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} : {self.saved_amount} / {self.target_amount}'
+
+    @property
+    def percent(self):
+        if self.target_amount and self.target_amount > 0:
+            return min(100.0, float(self.saved_amount) / float(self.target_amount) * 100)
+        return 100.0 if self.saved_amount > 0 else 0.0
+
+    @property
+    def remaining(self):
+        return max(Decimal('0'), self.target_amount - self.saved_amount)
+
+    @property
+    def reached(self):
+        return self.target_amount > 0 and self.saved_amount >= self.target_amount

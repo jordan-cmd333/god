@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 
 from .models import (
     BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
-    RecurringTransaction,
+    RecurringTransaction, SavingsGoal,
 )
 
 # Le navigateur poste toujours en ISO ; on tolere aussi la saisie francaise.
@@ -239,6 +239,46 @@ class ProfileForm(forms.ModelForm):
         widgets = {
             'alert_threshold': forms.NumberInput(attrs={'min': 10, 'max': 100}),
         }
+
+
+class SavingsGoalForm(forms.ModelForm):
+    """Objectif d'epargne. A la creation, un montant deja epargne optionnel."""
+
+    initial_saved = forms.DecimalField(
+        required=False, min_value=0, label='Deja epargne (optionnel)',
+        widget=forms.NumberInput(attrs={'inputmode': 'decimal', 'step': '0.01',
+                                        'min': '0', 'placeholder': '0'}),
+    )
+
+    class Meta:
+        model = SavingsGoal
+        fields = ['name', 'target_amount', 'deadline', 'color', 'icon']
+        widgets = {
+            'name': forms.TextInput(attrs={'placeholder': "Ex : Fonds d'urgence"}),
+            'target_amount': forms.NumberInput(
+                attrs={'inputmode': 'decimal', 'step': '0.01', 'min': '0.01',
+                       'placeholder': '0', 'autofocus': True, 'class': 'amount-input'}
+            ),
+            'deadline': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'color': forms.TextInput(attrs={'type': 'color'}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields['deadline'].required = False
+        self.fields['deadline'].input_formats = ISO_AND_FR
+        if self.instance.pk:                       # le montant epargne se gere
+            self.fields.pop('initial_saved')       # via Ajouter / Retirer
+
+    def save(self, commit=True):
+        goal = super().save(commit=False)
+        goal.user = self.user
+        if not goal.pk:
+            goal.saved_amount = self.cleaned_data.get('initial_saved') or 0
+        if commit:
+            goal.save()
+        return goal
 
 
 class RecurringTransactionForm(forms.ModelForm):
