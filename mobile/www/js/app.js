@@ -733,8 +733,8 @@ const App = (function () {
         <span>${Math.round(st.percent)} %</span>
         <span>${st.reached ? '<b style="color:var(--success)">Objectif atteint 🎉</b>' : `Reste ${money(st.remaining)} ${cur()}`}</span>
       </div>
-      <form data-goal-contrib="${g.id}" class="form-row" style="margin-top:12px;align-items:flex-end">
-        <div class="field" style="margin-bottom:0;flex:1"><input name="amount" class="amount-input" inputmode="decimal" step="0.01" min="0.01" placeholder="Montant"></div>
+      <form data-goal-contrib="${g.id}" class="goal-contrib" style="margin-top:12px">
+        <input name="amount" class="amount-input" inputmode="decimal" step="0.01" min="0.01" placeholder="Montant">
         <button type="submit" name="op" value="add" class="btn btn-sm">Mettre de cote</button>
         <button type="submit" name="op" value="withdraw" class="btn btn-ghost btn-sm">Reprendre</button>
       </form>

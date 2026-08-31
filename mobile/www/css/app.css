@@ -326,6 +326,18 @@ input[type=color] { height: 44px; padding: 4px; }
   padding: 14px 12px !important;
 }
 
+/* Contribution a un objectif : champ montant compact pour laisser les deux
+   boutons (Mettre de cote / Reprendre) tenir dans le cadre. */
+.goal-contrib { display: flex; gap: 8px; align-items: stretch; }
+.goal-contrib .amount-input {
+  flex: 1 1 auto;
+  min-width: 0;                 /* autorise le champ a se retrecir */
+  font-size: 17px !important;
+  text-align: left;
+  padding: 9px 11px !important;
+}
+.goal-contrib .btn { flex: 0 0 auto; white-space: nowrap; }
+
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* ----------------------------------------------------------------- Chips */
