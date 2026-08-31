@@ -754,7 +754,7 @@ const App = (function () {
       html += `<div class="card">${emptyBlock('🐖', "Aucun objectif d'epargne.", '<a href="#/goal/new">Definir un objectif</a>')}</div>`;
     }
     return {
-      title: "Objectifs d'epargne", subtitle: 'Mettez de cote, suivez vos progres', html,
+      title: "Objectifs d'epargne", subtitle: 'Mettez de cote, suivez vos progres', tab: 'goals', html,
       mount: (root) => {
         root.querySelectorAll('[data-goal-contrib]').forEach((f) => {
           const input = f.querySelector('.amount-input');
@@ -802,7 +802,7 @@ const App = (function () {
     ${item ? `<form data-del-goal="${item.id}" style="margin-top:16px">
       <button class="btn btn-danger btn-block">Supprimer</button></form>` : ''}`;
     return {
-      title: item ? "Modifier l'objectif" : 'Nouvel objectif', subtitle: 'Fixez un montant a atteindre', html,
+      title: item ? "Modifier l'objectif" : 'Nouvel objectif', subtitle: 'Fixez un montant a atteindre', tab: 'goals', html,
       mount: (root) => {
         root.querySelector('[data-form="goal"]').addEventListener('submit', async (e) => {
           e.preventDefault();
