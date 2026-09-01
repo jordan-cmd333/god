@@ -554,6 +554,17 @@ def upcoming_recurrences(user, ref: date | None = None, days: int = 7):
     return [r for r in qs if _recurrence_live(r)]
 
 
+def upcoming_goals(user, ref: date | None = None, days: int = 30):
+    """Objectifs d'epargne non atteints dont l'echeance approche."""
+    ref = ref or today()
+    horizon = ref + timedelta(days=days)
+    from .models import SavingsGoal
+    goals = SavingsGoal.objects.filter(
+        user=user, is_archived=False, deadline__gte=ref, deadline__lte=horizon
+    ).order_by('deadline')
+    return [g for g in goals if not g.reached]
+
+
 def confirm_recurrence(rec):
     """Cree l'ecriture datee de l'echeance puis avance la recurrence."""
     d = rec.next_due

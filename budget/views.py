@@ -624,6 +624,16 @@ def recurrence_toggle(request, pk):
     return redirect('recurrence_list')
 
 
+@login_required
+def upcoming(request):
+    """Vue « A venir » : echeances a confirmer, prochaines echeances, objectifs proches."""
+    return render(request, 'upcoming.html', {
+        'due': services.due_recurrences(request.user),
+        'soon': services.upcoming_recurrences(request.user, days=30),
+        'goals_soon': services.upcoming_goals(request.user, days=30),
+    })
+
+
 # --------------------------------------------------------------------------
 # Objectifs d'epargne
 # --------------------------------------------------------------------------

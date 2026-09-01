@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}A venir — Budget Control{% endblock %}
+{% block page_title %}A venir{% endblock %}
+{% block page_subtitle %}Vos prochaines echeances{% endblock %}
+
+{% block content %}
+
+{% if not due and not soon and not goals_soon %}
+  <div class="card">
+    <div class="empty">
+      <span class="big">📅</span>
+      Rien a venir dans les 30 prochains jours.
+    </div>
+  </div>
+{% endif %}
+
+{% if due %}
+  <div class="card">
+    <h2 class="card-title">A confirmer <a href="{% url 'recurrence_list' %}">Gerer</a></h2>
+    {% for rec in due %}
+      {% include 'partials/due_recurrence.html' with rec=rec next='upcoming' %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if soon %}
+  <div class="card">
+    <h2 class="card-title">Prochaines echeances</h2>
+    <ul class="list">
+      {% for rec in soon %}
+        <li class="row">
+          <span class="row-icon" style="background:{{ rec.ref.color }}">{{ rec.ref.icon|icon }}</span>
+          <span class="row-main">
+            <span class="t">{{ rec.description|default:rec.ref.name }}</span>
+            <span class="s">{{ rec.get_frequency_display|lower }} · {{ rec.next_due|date:"d/m/Y" }} · dans {{ rec.next_due|timeuntil }}</span>
+          </span>
+          <span class="row-amount">{% if rec.kind == 'income' %}+{% else %}−{% endif %}{{ rec.amount|money }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if goals_soon %}
+  <div class="card">
+    <h2 class="card-title">Objectifs a echeance <a href="{% url 'goal_list' %}">Gerer</a></h2>
+    <ul class="list">
+      {% for goal in goals_soon %}
+        <li class="row">
+          <span class="row-icon" style="background:{{ goal.color }}">{{ goal.icon|icon }}</span>
+          <span class="row-main">
+            <span class="t">{{ goal.name }}</span>
+            <span class="s">{{ goal.deadline|date:"d/m/Y" }} · dans {{ goal.deadline|timeuntil }} · reste {{ goal.remaining|money }} {{ currency }}</span>
+          </span>
+          <span class="row-amount">{{ goal.percent|floatformat:0 }} %</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+{% endblock %}

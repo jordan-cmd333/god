@@ -63,6 +63,7 @@ urlpatterns = [
     path('recurrences/<int:pk>/confirmer/', views.recurrence_confirm, name='recurrence_confirm'),
     path('recurrences/<int:pk>/passer/', views.recurrence_skip, name='recurrence_skip'),
     path('recurrences/<int:pk>/activer/', views.recurrence_toggle, name='recurrence_toggle'),
+    path('a-venir/', views.upcoming, name='upcoming'),
 
     # Objectifs d'epargne
     path('objectifs/', views.goal_list, name='goal_list'),

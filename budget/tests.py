@@ -799,6 +799,26 @@ class RecurrenceTests(BaseCase):
         payload = json.loads(self.client.get(reverse('export_backup')).content)
         self.assertTrue(any(r['description'] == 'Loyer' for r in payload['recurrences']))
 
+    def test_la_vue_a_venir_liste_echeances_et_objectifs(self):
+        today = services.today()
+        self._recur(description='A confirmer', next_due=today)
+        self._recur(description='Loyer futur', start_date=today + timedelta(days=5),
+                    next_due=today + timedelta(days=5))
+        SavingsGoal.objects.create(user=self.user, name='Rentree',
+                                   target_amount=Decimal('100000'),
+                                   deadline=today + timedelta(days=10))
+        response = self.client.get(reverse('upcoming'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Loyer futur')   # prochaines echeances
+        self.assertContains(response, 'Rentree')        # objectif a echeance
+        self.assertContains(response, 'A confirmer')    # section due
+
+    def test_la_vue_a_venir_exige_une_connexion(self):
+        self.client.logout()
+        response = self.client.get(reverse('upcoming'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/connexion/', response['Location'])
+
 
 class GoalTests(BaseCase):
     """Objectifs d'epargne : contributions liees a une depense « Epargne »."""

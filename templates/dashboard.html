@@ -59,7 +59,7 @@
 {# ---------------------------------------------- Recurrences a confirmer #}
 {% if due_recurrences %}
   <div class="card">
-    <h2 class="card-title">A confirmer <a href="{% url 'recurrence_list' %}">Gerer</a></h2>
+    <h2 class="card-title">A confirmer <a href="{% url 'upcoming' %}">A venir</a></h2>
     {% for rec in due_recurrences %}
       {% include 'partials/due_recurrence.html' with rec=rec next='dashboard' %}
     {% endfor %}
