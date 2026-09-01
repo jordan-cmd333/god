@@ -5,7 +5,7 @@
  * « cache d'abord ». Aucune requete reseau n'est necessaire une fois installe.
  */
 
-const CACHE = 'budget-control-v9';
+const CACHE = 'budget-control-v10';
 
 const ASSETS = [
   './',

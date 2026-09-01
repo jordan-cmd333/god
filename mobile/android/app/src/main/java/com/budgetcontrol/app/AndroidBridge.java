@@ -28,4 +28,22 @@ class AndroidBridge {
     public void printPage() {
         activity.requestPrint();
     }
+
+    /** Demande l'autorisation d'afficher des notifications (Android 13+). */
+    @JavascriptInterface
+    public void requestNotifications() {
+        activity.requestNotificationPermission();
+    }
+
+    /** Programme un rappel quotidien a hour:minute avec le texte fourni. */
+    @JavascriptInterface
+    public void scheduleDailyReminder(int hour, int minute, String title, String body) {
+        activity.scheduleDailyReminder(hour, minute, title, body);
+    }
+
+    /** Annule le rappel quotidien. */
+    @JavascriptInterface
+    public void cancelReminder() {
+        activity.cancelReminder();
+    }
 }

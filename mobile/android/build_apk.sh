@@ -40,7 +40,8 @@ echo ">> javac"
 javac -source 8 -target 8 -nowarn \
   -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" \
   -d "$BUILD/classes" \
-  "$APP/java/com/budgetcontrol/app/"*.java 2>/dev/null
+  "$APP/java/com/budgetcontrol/app/"*.java \
+  "$BUILD/gen/com/budgetcontrol/app/"*.java 2>/dev/null
 
 echo ">> d8 (dex)"
 "$BT/d8" --lib "$ANDROID_JAR" --min-api "$MIN" --output "$BUILD/dex" \

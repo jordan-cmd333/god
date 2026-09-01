@@ -9,6 +9,7 @@ class UiTask implements Runnable {
 
     static final int SAVE = 1;
     static final int PRINT = 2;
+    static final int NOTIF = 3;
 
     private final MainActivity activity;
     private final int what;
@@ -24,6 +25,8 @@ class UiTask implements Runnable {
             activity.doLaunchSave();
         } else if (what == PRINT) {
             activity.doPrint();
+        } else if (what == NOTIF) {
+            activity.doRequestNotif();
         }
     }
 }

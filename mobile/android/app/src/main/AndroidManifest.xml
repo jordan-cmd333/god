@@ -7,11 +7,14 @@
     <!-- min/target SDK sont passes a aapt2 au moment du link. -->
 
     <!--
-      AUCUNE permission declaree.
       Pas de android.permission.INTERNET : l'application ne peut ouvrir aucun
       socket reseau. Les assets sont servis en interne (WebViewClient), jamais
       via le reseau. Fonctionne a l'identique en mode avion.
+
+      Seule permission declaree : POST_NOTIFICATIONS (Android 13+), demandee a la
+      demande de l'utilisateur pour les rappels quotidiens. N'ouvre aucun reseau.
     -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="@string/app_name"
@@ -36,5 +39,8 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- Rappels quotidiens : recoit l'alarme et poste la notification. -->
+        <receiver android:name=".ReminderReceiver" android:exported="false" />
     </application>
 </manifest>

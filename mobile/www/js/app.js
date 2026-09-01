@@ -242,7 +242,7 @@ const App = (function () {
 
     const dueRecs = S.dueRecurrences(d.recurrences, ref);
     if (dueRecs.length) {
-      html += `<div class="card"><h2 class="card-title">A confirmer <a href="#/recurrences">Gerer</a></h2>`;
+      html += `<div class="card"><h2 class="card-title">A confirmer <a href="#/upcoming">A venir</a></h2>`;
       dueRecs.forEach((r) => html += dueRecurRow(r));
       html += `</div>`;
     }
@@ -845,6 +845,105 @@ const App = (function () {
     };
   };
 
+  // A venir (echeances recurrentes + objectifs proches) --------------------
+
+  function inDaysLabel(n) { return n <= 0 ? "aujourd'hui" : n === 1 ? 'demain' : `dans ${n} jours`; }
+  function daysUntil(iso, ref) { return Math.round((S.parse(iso) - S.parse(ref)) / 86400000); }
+
+  function goalsDueSoon(refISO, days) {
+    return State.data.goals.filter((g) => !g.archived && g.deadline && !goalStatus(g).reached
+        && g.deadline >= refISO && g.deadline <= S.addDays(refISO, days))
+      .sort((a, b) => (a.deadline < b.deadline ? -1 : a.deadline > b.deadline ? 1 : 0));
+  }
+
+  Views.upcoming = async function () {
+    const ref = S.todayISO();
+    const due = S.dueRecurrences(State.data.recurrences, ref);
+    const soon = S.upcomingRecurrences(State.data.recurrences, ref, 30);
+    const goalSoon = goalsDueSoon(ref, 30);
+    let html = '';
+    if (!due.length && !soon.length && !goalSoon.length) {
+      html += `<div class="card">${emptyBlock('📅', 'Rien a venir dans les 30 prochains jours.', '<a href="#/recurrences">Ajouter une recurrence</a>')}</div>`;
+    }
+    if (due.length) {
+      html += `<div class="card"><h2 class="card-title">A confirmer <a href="#/recurrences">Gerer</a></h2>`;
+      due.forEach((r) => html += dueRecurRow(r));
+      html += `</div>`;
+    }
+    if (soon.length) {
+      html += `<div class="card"><h2 class="card-title">Prochaines echeances</h2><ul class="list">`;
+      soon.forEach((r) => {
+        const ref2 = recurRef(r); const isIncome = r.kind === 'income';
+        html += `<li class="row"><span class="row-icon" style="background:${ref2.color}">${icon(ref2.icon)}</span>
+          <span class="row-main"><span class="t">${esc(r.description || ref2.name)}</span>
+          <span class="s">${S.FREQ_LABELS[r.frequency]} · ${fmtDate(r.nextDue)} · ${inDaysLabel(daysUntil(r.nextDue, ref))}</span></span>
+          <span class="row-amount">${isIncome ? '+' : '−'}${money(r.amount)}</span></li>`;
+      });
+      html += `</ul></div>`;
+    }
+    if (goalSoon.length) {
+      html += `<div class="card"><h2 class="card-title">Objectifs a echeance <a href="#/goals">Gerer</a></h2><ul class="list">`;
+      goalSoon.forEach((g) => {
+        const st = goalStatus(g);
+        html += `<li class="row"><span class="row-icon" style="background:${g.color}">${icon(g.icon)}</span>
+          <span class="row-main"><span class="t">${esc(g.name)}</span>
+          <span class="s">${fmtDate(g.deadline)} · ${inDaysLabel(daysUntil(g.deadline, ref))} · reste ${money(st.remaining)} ${cur()}</span></span>
+          <span class="row-amount">${Math.round(st.percent)} %</span></li>`;
+      });
+      html += `</ul></div>`;
+    }
+    return {
+      title: 'A venir', subtitle: 'Vos prochaines echeances', html,
+      mount: (root) => wireRecurActions(root, '#/upcoming'),
+    };
+  };
+
+  // Rappels / notifications ------------------------------------------------
+  // Resume quotidien (vers 8h) des echeances a confirmer et objectifs proches.
+  // Notifications de fond : APK Android (pont natif). Sur PWA, on affiche le
+  // rappel a l'ouverture (les notifications programmees hors ligne ne sont pas
+  // fiables sur le web). Seule autorisation demandee : afficher des notifications.
+
+  function reminderDigest() {
+    const ref = S.todayISO(); const d = State.data;
+    const due = S.dueRecurrences(d.recurrences, ref).length;
+    const soon = S.upcomingRecurrences(d.recurrences, ref, 3).length;
+    const goalSoon = goalsDueSoon(ref, 3).length;
+    const parts = [];
+    if (due) parts.push(`${due} echeance${due > 1 ? 's' : ''} a confirmer`);
+    if (soon) parts.push(`${soon} a venir`);
+    if (goalSoon) parts.push(`${goalSoon} objectif${goalSoon > 1 ? 's' : ''} bientot`);
+    if (!parts.length) return null;
+    return { title: 'Budget Control', body: parts.join(' · ') + '.' };
+  }
+
+  async function enableReminders() {
+    if (window.AndroidBridge && window.AndroidBridge.requestNotifications) {
+      try { window.AndroidBridge.requestNotifications(); return true; } catch (e) { return true; }
+    }
+    if ('Notification' in window) {
+      try { return (await Notification.requestPermission()) === 'granted'; } catch (e) { return false; }
+    }
+    return false;
+  }
+
+  async function syncReminders() {
+    const on = await DB.metaGet('remindersOn', false);
+    const digest = reminderDigest();
+    if (window.AndroidBridge && window.AndroidBridge.scheduleDailyReminder) {
+      if (on && digest) window.AndroidBridge.scheduleDailyReminder(8, 0, digest.title, digest.body);
+      else if (window.AndroidBridge.cancelReminder) window.AndroidBridge.cancelReminder();
+      return;
+    }
+    if (on && digest && 'Notification' in window && Notification.permission === 'granted') {
+      const last = await DB.metaGet('reminderShown', null);
+      if (last !== S.todayISO()) {
+        try { new Notification(digest.title, { body: digest.body, icon: 'icons/icon-192.png' }); } catch (e) { /* sans effet */ }
+        await DB.metaSet('reminderShown', S.todayISO());
+      }
+    }
+  }
+
   // Historique (depenses / revenus) ----------------------------------------
 
   function historyView(opts) {
@@ -1193,6 +1292,7 @@ const App = (function () {
       goals: d.goals.filter((g) => !g.archived).length,
     };
     const hasPin = !!(await DB.metaGet('pin', null));
+    const remindersOn = await DB.metaGet('remindersOn', false);
     const html = `
       <div class="card"><h2 class="card-title">Preferences</h2><form data-form="prefs">
         <div class="field"><label>Devise</label><input name="currency" value="${cur()}"></div>
@@ -1218,7 +1318,14 @@ const App = (function () {
           <a class="btn btn-ghost btn-sm" href="#/recurrences">Gerer</a></li>
         <li class="row"><span class="row-icon" style="background:#0ea5e9">🐖</span>
           <span class="row-main"><span class="t">Objectifs d'epargne</span><span class="s">${stats.goals} objectif${stats.goals > 1 ? 's' : ''}</span></span>
-          <a class="btn btn-ghost btn-sm" href="#/goals">Gerer</a></li></ul></div>
+          <a class="btn btn-ghost btn-sm" href="#/goals">Gerer</a></li>
+        <li class="row"><span class="row-icon" style="background:#f59e0b">📅</span>
+          <span class="row-main"><span class="t">Echeances a venir</span><span class="s">Recurrences et objectifs proches</span></span>
+          <a class="btn btn-ghost btn-sm" href="#/upcoming">Voir</a></li></ul></div>
+
+      <div class="card"><h2 class="card-title">Rappels</h2>
+        <p class="helptext" style="margin-bottom:12px">Un rappel par jour (vers 8h) qui resume vos echeances a confirmer et vos objectifs proches. Seule autorisation demandee : afficher des notifications.</p>
+        <label class="chip"><input type="checkbox" data-reminders ${remindersOn ? 'checked' : ''}> Activer les notifications</label></div>
 
       <div class="card"><h2 class="card-title">Mes donnees</h2><div class="stat-grid">
         <div class="stat"><div class="k">Depenses</div><div class="v">${stats.expenses}</div></div>
@@ -1262,6 +1369,18 @@ const App = (function () {
         root.querySelector('[data-seed-demo]').addEventListener('click', async () => {
           if (!await confirmModal('Remplacer les donnees actuelles par un jeu de demonstration ?')) return;
           await seedDemo(); await load(); flash('success', 'Donnees de demonstration chargees.'); go('#/');
+        });
+        root.querySelector('[data-reminders]').addEventListener('change', async (e) => {
+          if (e.target.checked) {
+            const ok = await enableReminders();
+            if (!ok) { e.target.checked = false; flash('error', 'Notifications non autorisees par le systeme.'); return; }
+            await DB.metaSet('remindersOn', true); flash('success', 'Rappels actives.');
+          } else {
+            await DB.metaSet('remindersOn', false);
+            if (window.AndroidBridge && window.AndroidBridge.cancelReminder) window.AndroidBridge.cancelReminder();
+            flash('info', 'Rappels desactives.');
+          }
+          await syncReminders(); go('#/settings');
         });
       },
     };
@@ -1648,6 +1767,7 @@ const App = (function () {
     [/^#\/goals/, () => Views.goals()],
     [/^#\/goal\/new/, () => Views.goalForm(null)],
     [/^#\/goal\/(\d+)/, (m) => Views.goalForm(Number(m[1]))],
+    [/^#\/upcoming/, () => Views.upcoming()],
     [/^#\/categories/, () => Views.categories()],
     [/^#\/category\/(\d+)/, (m) => refEditView({ store: 'categories', base: '#/categories', tab: null }, Number(m[1]))],
     [/^#\/sources/, () => Views.sources()],
@@ -1685,6 +1805,7 @@ const App = (function () {
     await guardLock();
     window.addEventListener('hashchange', route);
     route();
+    syncReminders(); // rappels : replanifie selon l'etat au demarrage
   }
 
   document.addEventListener('DOMContentLoaded', init);
