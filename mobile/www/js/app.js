@@ -60,11 +60,26 @@ const App = (function () {
   function cat(id) { return State.data.categories.find((c) => c.id === id) || { name: '?', color: '#64748b', icon: 'other' }; }
   function src(id) { return State.data.sources.find((s) => s.id === id) || { name: '?', color: '#64748b', icon: 'other' }; }
 
+  // --- Comptes / portefeuilles (especes, mobile money, banque...) ----------
+  const ACCOUNT_TYPES = { cash: 'Especes', mobile: 'Mobile money', bank: 'Banque', other: 'Autre' };
+  const ACCOUNT_TYPE_ICON = { cash: 'cash', mobile: 'phone', bank: 'bank', other: 'wallet' };
+  const ACCOUNT_TYPE_METHOD = { cash: 'cash', mobile: 'mobile', bank: 'transfer', other: 'other' };
+  const ACCOUNT_TYPE_COLOR = { cash: '#f59e0b', mobile: '#7c3aed', bank: '#0f766e', other: '#0891b2' };
+
+  function acct(id) { return State.data.accounts.find((a) => a.id === id) || null; }
+  function accountMethod(id) { const a = acct(id); return a ? (ACCOUNT_TYPE_METHOD[a.type] || 'other') : 'cash'; }
+  function accountBalance(a) {
+    const inc = S.sum(State.data.incomes.filter((i) => i.accountId === a.id), 'amount');
+    const exp = S.sum(State.data.expenses.filter((e) => e.accountId === a.id), 'amount');
+    return S.round2((a.initialBalance || 0) + inc - exp);
+  }
+  function activeAccounts() { return State.data.accounts.filter((a) => !a.archived); }
+
   // --- Chargement et evaluation ------------------------------------------
 
   async function load() {
     const d = {};
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals']) {
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) {
       d[s] = await DB.all(s);
     }
     State.data = d;
@@ -249,6 +264,18 @@ const App = (function () {
 
     html += `<div class="card"><h2 class="card-title">Solde du mois <a href="#/incomes">Detail des revenus</a></h2>${balanceCard(bal)}</div>`;
 
+    const accs = activeAccounts();
+    if (accs.length) {
+      const totalAcc = S.round2(accs.reduce((s, a) => s + accountBalance(a), 0));
+      html += `<div class="card"><h2 class="card-title">Comptes <a href="#/accounts">Gerer</a></h2>
+        <div class="limit-head" style="margin-bottom:8px"><span class="limit-name">Total disponible</span>
+          <span class="limit-amounts"><b>${money(totalAcc)} ${cur()}</b></span></div><ul class="list">`;
+      accs.forEach((a) => { html += `<li class="row"><span class="row-icon" style="background:${a.color}">${icon(a.icon)}</span>
+        <span class="row-main"><span class="t">${esc(a.name)}</span><span class="s">${ACCOUNT_TYPES[a.type] || ''}</span></span>
+        <span class="row-amount">${money(accountBalance(a))}</span></li>`; });
+      html += `</ul></div>`;
+    }
+
     html += `<div class="card"><h2 class="card-title">Limites budgetaires <a href="#/budgets">Gerer</a></h2>`;
     if (statuses.length) {
       statuses.forEach((st) => html += limitRow(st, false));
@@ -341,6 +368,9 @@ const App = (function () {
         ${selId === r.id || (selId == null && i === 0) ? 'checked' : ''}>${icon(r.icon)} ${esc(r.name)}</label>`).join('');
     const methodOpts = Object.keys(opts.methods).map((k) =>
       `<option value="${k}" ${item.method === k ? 'selected' : ''}>${opts.methods[k]}</option>`).join('');
+    const accts = activeAccounts();
+    const selAcct = item.accountId != null ? item.accountId : (accts[0] ? accts[0].id : null);
+    const acctOpts = accts.map((a) => `<option value="${a.id}" ${selAcct === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
     const steps = opts.addSteps.map((s) => `<button type="button" class="chip" data-add="${s}">+${money(s).replace(',00', '')}</button>`).join('');
     const btnCls = isExpense ? 'btn' : 'btn btn-income';
 
@@ -358,8 +388,10 @@ const App = (function () {
       <div class="card">
         <div class="form-row">
           <div class="field"><label>Date</label><input type="date" name="date" value="${item.date || S.todayISO()}"></div>
-          <div class="field"><label>${isExpense ? 'Mode de paiement' : 'Mode de reception'}</label>
-            <select name="method">${methodOpts}</select></div>
+          ${accts.length
+            ? `<div class="field"><label>Compte</label><select name="account">${acctOpts}</select></div>`
+            : `<div class="field"><label>${isExpense ? 'Mode de paiement' : 'Mode de reception'}</label>
+                 <select name="method">${methodOpts}</select></div>`}
         </div>
         <div class="field"><label>Description</label>
           <input type="text" name="description" value="${esc(item.description || '')}" placeholder="Ex : ${isExpense ? 'dejeuner' : 'salaire de juillet'}"></div>
@@ -392,11 +424,15 @@ const App = (function () {
       if (!(amount > 0)) { errEl.hidden = false; errEl.textContent = 'Montant invalide.'; return; }
       const refVal = fd.get('ref');
       if (!refVal) { errEl.hidden = false; errEl.textContent = 'Choisissez une ' + (opts.kind === 'expense' ? 'categorie.' : 'source.'); return; }
+      const acctVal = fd.get('account');
+      const accountId = acctVal ? Number(acctVal) : null;
+      const method = accountId != null ? accountMethod(accountId) : (fd.get('method') || 'cash');
       await opts.onSave({
         amount,
         refId: Number(refVal),
         date: fd.get('date') || S.todayISO(),
-        method: fd.get('method'),
+        method,
+        accountId,
         description: (fd.get('description') || '').trim(),
         recurring: fd.get('recurring') === 'on',
         note: (fd.get('note') || '').trim(),
@@ -419,7 +455,7 @@ const App = (function () {
       mount: (root) => mountTxnForm(root, {
         kind: 'expense',
         onSave: async (v, again) => {
-          const rec = { amount: v.amount, categoryId: v.refId, description: v.description, date: v.date, method: v.method, note: v.note, createdAt: item ? item.createdAt : Date.now() };
+          const rec = { amount: v.amount, categoryId: v.refId, description: v.description, date: v.date, method: v.method, accountId: v.accountId, note: v.note, createdAt: item ? item.createdAt : Date.now() };
           if (item) { rec.id = item.id; await DB.put('expenses', rec); } else { await DB.add('expenses', rec); }
           State.data.expenses = await DB.all('expenses');
           await reevaluate(v.date);
@@ -442,7 +478,7 @@ const App = (function () {
       mount: (root) => mountTxnForm(root, {
         kind: 'income',
         onSave: async (v, again) => {
-          const rec = { amount: v.amount, sourceId: v.refId, description: v.description, date: v.date, method: v.method, recurring: v.recurring, note: v.note, createdAt: item ? item.createdAt : Date.now() };
+          const rec = { amount: v.amount, sourceId: v.refId, description: v.description, date: v.date, method: v.method, accountId: v.accountId, recurring: v.recurring, note: v.note, createdAt: item ? item.createdAt : Date.now() };
           if (item) { rec.id = item.id; await DB.put('incomes', rec); } else { await DB.add('incomes', rec); }
           State.data.incomes = await DB.all('incomes');
           await reevaluate(v.date);
@@ -844,6 +880,152 @@ const App = (function () {
       },
     };
   };
+
+  // Comptes / portefeuilles ------------------------------------------------
+
+  Views.accounts = async function () {
+    const list = activeAccounts();
+    const total = S.round2(list.reduce((s, a) => s + accountBalance(a), 0));
+    let html = `<div class="btn-row" style="margin-bottom:16px">
+      <a href="#/account/new" class="btn">＋ Nouveau compte</a></div>`;
+    if (list.length) {
+      html += `<div class="card hero"><div class="label">Total sur vos comptes</div>
+        <div class="value">${money(total)}<span class="cur">${cur()}</span></div></div>`;
+      html += `<div class="card"><ul class="list">`;
+      list.forEach((a) => {
+        html += `<li class="row"><span class="row-icon" style="background:${a.color}">${icon(a.icon)}</span>
+          <span class="row-main"><span class="t">${esc(a.name)}</span><span class="s">${ACCOUNT_TYPES[a.type] || ''}</span></span>
+          <span class="row-amount">${money(accountBalance(a))}</span>
+          <span class="row-actions" style="margin-left:8px"><a class="btn btn-ghost btn-sm" href="#/account/${a.id}">✏️</a></span></li>`;
+      });
+      html += `</ul></div>`;
+    } else {
+      html += `<div class="card">${emptyBlock('👛', 'Aucun compte defini.', '<a href="#/account/new">Ajouter un compte</a>')}</div>`;
+    }
+    return { title: 'Comptes', subtitle: 'Especes, mobile money, banque...', html };
+  };
+
+  Views.accountForm = async function (id) {
+    const item = id ? acct(id) : null;
+    const typeOpts = Object.keys(ACCOUNT_TYPES).map((k) =>
+      `<option value="${k}" ${(item ? item.type : 'cash') === k ? 'selected' : ''}>${ACCOUNT_TYPES[k]}</option>`).join('');
+    const html = `<form data-form="account">
+      <div class="card">
+        <div class="field"><label>Nom du compte</label>
+          <input name="name" value="${esc(item ? item.name : '')}" placeholder="Ex : Orange Money" required></div>
+        <div class="form-row">
+          <div class="field"><label>Type</label><select name="type">${typeOpts}</select></div>
+          <div class="field"><label>Couleur</label><input name="color" type="color" value="${item ? item.color : '#0f766e'}"></div>
+        </div>
+        <div class="field" style="margin-bottom:0"><label>${item ? 'Solde initial' : 'Solde actuel'} (${cur()})</label>
+          <input name="initial" class="amount-input" inputmode="decimal" step="0.01"
+            value="${item && item.initialBalance != null ? item.initialBalance : ''}" placeholder="0">
+          <span class="helptext">Solde affiche = solde initial + revenus − depenses affectes a ce compte.</span></div>
+        <div class="errorlist" data-err hidden></div>
+      </div>
+      <button class="btn btn-block" style="margin-bottom:10px">${item ? 'Enregistrer' : 'Creer le compte'}</button>
+    </form>
+    ${item ? `<form data-del-account="${item.id}" style="margin-top:16px">
+      <button class="btn btn-danger btn-block">Supprimer</button></form>` : ''}`;
+    return {
+      title: item ? 'Modifier le compte' : 'Nouveau compte', subtitle: 'Especes, mobile money, banque...', html,
+      mount: (root) => mountAccountForm(root, item),
+    };
+  };
+
+  function mountAccountForm(root, item) {
+    root.querySelector('[data-form="account"]').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const name = (fd.get('name') || '').trim();
+      const err = root.querySelector('[data-err]');
+      if (!name) { err.hidden = false; err.textContent = 'Nom requis.'; return; }
+      const type = fd.get('type') || 'cash';
+      const rec = {
+        name, type, color: fd.get('color') || '#0f766e', icon: ACCOUNT_TYPE_ICON[type] || 'wallet',
+        initialBalance: S.round2(parseFloat(fd.get('initial')) || 0),
+        archived: item ? item.archived : false,
+        createdAt: item ? item.createdAt : Date.now(),
+      };
+      if (item) { rec.id = item.id; await DB.put('accounts', rec); } else { await DB.add('accounts', rec); }
+      State.data.accounts = await DB.all('accounts');
+      flash('success', item ? 'Compte mis a jour.' : 'Compte cree.');
+      go('#/accounts');
+    });
+    const del = root.querySelector('[data-del-account]');
+    if (del) del.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const aid = Number(del.getAttribute('data-del-account'));
+      const used = State.data.expenses.some((x) => x.accountId === aid) || State.data.incomes.some((x) => x.accountId === aid);
+      if (!await confirmModal(used
+        ? "Ce compte a des operations. Le supprimer les deliera (elles restent dans l'historique). Continuer ?"
+        : 'Supprimer ce compte ?')) return;
+      if (used) {
+        for (const x of State.data.expenses.filter((e2) => e2.accountId === aid)) await DB.put('expenses', { ...x, accountId: null });
+        for (const x of State.data.incomes.filter((i2) => i2.accountId === aid)) await DB.put('incomes', { ...x, accountId: null });
+        State.data.expenses = await DB.all('expenses'); State.data.incomes = await DB.all('incomes');
+      }
+      await DB.remove('accounts', aid);
+      State.data.accounts = await DB.all('accounts');
+      flash('success', 'Compte supprime.'); go('#/accounts');
+    });
+  }
+
+  // Onboarding : assistant de premier lancement ----------------------------
+
+  function welcomeAccountRow(name, type) {
+    return `<div class="field"><label>${esc(name)}</label>
+      <input data-acct-type="${type}" data-acct-name="${esc(name)}" inputmode="decimal" step="0.01"
+        placeholder="Solde actuel (laisser vide si non utilise)"></div>`;
+  }
+
+  Views.welcome = async function () {
+    const html = `
+      <div class="card"><h2 class="card-title">Bienvenue 👋</h2>
+        <p class="helptext">En une minute, mettons en place l'essentiel. Vous pourrez tout modifier ensuite.</p></div>
+      <form data-form="welcome">
+        <div class="card"><span class="form-label">1. Votre monnaie</span>
+          <div class="field" style="margin-bottom:0"><input name="currency" value="${cur()}" placeholder="FCFA"></div></div>
+        <div class="card"><span class="form-label">2. Vos comptes</span>
+          <p class="helptext" style="margin-bottom:12px">Indiquez le solde des comptes que vous utilisez. Laissez vide ceux que vous n'avez pas.</p>
+          ${welcomeAccountRow('Especes', 'cash')}
+          ${welcomeAccountRow('Mobile Money', 'mobile')}
+          <div style="margin-bottom:0">${welcomeAccountRow('Banque', 'bank')}</div></div>
+        <div class="card"><span class="form-label">3. Un budget mensuel (optionnel)</span>
+          <p class="helptext" style="margin-bottom:12px">Une limite de depenses par mois qui vous alerte avant le depassement.</p>
+          <div class="field" style="margin-bottom:0"><label>Limite mensuelle (${cur()})</label>
+            <input name="budget" class="amount-input" inputmode="decimal" step="0.01" placeholder="0"></div></div>
+        <button class="btn btn-block" style="margin-bottom:10px">Terminer</button>
+        <button type="button" class="btn btn-ghost btn-block" data-skip-welcome>Passer pour l'instant</button>
+      </form>`;
+    return { title: 'Configuration', subtitle: 'Premier lancement', html, mount: mountWelcome };
+  };
+
+  function mountWelcome(root) {
+    async function finish() { await DB.metaSet('onboarded', true); go('#/'); }
+    root.querySelector('[data-skip-welcome]').addEventListener('click', finish);
+    root.querySelector('[data-form="welcome"]').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const currency = (fd.get('currency') || 'FCFA').trim() || 'FCFA';
+      await DB.metaSet('currency', currency); State.currency = currency;
+      for (const inp of root.querySelectorAll('[data-acct-type]')) {
+        const val = (inp.value || '').trim();
+        if (val === '') continue;
+        const type = inp.getAttribute('data-acct-type');
+        await DB.add('accounts', {
+          name: inp.getAttribute('data-acct-name'), type,
+          color: ACCOUNT_TYPE_COLOR[type], icon: ACCOUNT_TYPE_ICON[type],
+          initialBalance: S.round2(parseFloat(val) || 0), archived: false, createdAt: Date.now(),
+        });
+      }
+      const budget = S.round2(parseFloat(fd.get('budget')) || 0);
+      if (budget > 0) await DB.add('limits', { period: 'month', categoryId: null, amount: budget, active: true });
+      await load();
+      flash('success', 'Tout est pret !');
+      await finish();
+    });
+  }
 
   // A venir (echeances recurrentes + objectifs proches) --------------------
 
@@ -1290,6 +1472,7 @@ const App = (function () {
       categories: d.categories.length, sources: d.sources.length, limits: d.limits.length,
       recurrences: d.recurrences.filter((r) => r.active).length,
       goals: d.goals.filter((g) => !g.archived).length,
+      accounts: d.accounts.filter((a) => !a.archived).length,
     };
     const hasPin = !!(await DB.metaGet('pin', null));
     const remindersOn = await DB.metaGet('remindersOn', false);
@@ -1313,6 +1496,9 @@ const App = (function () {
         <li class="row"><span class="row-icon" style="background:#15803d">💵</span>
           <span class="row-main"><span class="t">Sources de revenus</span><span class="s">${stats.sources} source${stats.sources > 1 ? 's' : ''}</span></span>
           <a class="btn btn-ghost btn-sm" href="#/sources">Gerer</a></li>
+        <li class="row"><span class="row-icon" style="background:#0891b2">👛</span>
+          <span class="row-main"><span class="t">Comptes</span><span class="s">${stats.accounts} compte${stats.accounts > 1 ? 's' : ''}</span></span>
+          <a class="btn btn-ghost btn-sm" href="#/accounts">Gerer</a></li>
         <li class="row"><span class="row-icon" style="background:#7c3aed">🔁</span>
           <span class="row-main"><span class="t">Transactions recurrentes</span><span class="s">${stats.recurrences} active${stats.recurrences > 1 ? 's' : ''}</span></span>
           <a class="btn btn-ghost btn-sm" href="#/recurrences">Gerer</a></li>
@@ -1430,7 +1616,7 @@ const App = (function () {
 
   async function buildBackup() {
     const dump = { version: 1, exportedAt: new Date().toISOString(), meta: { currency: State.currency, threshold: State.threshold } };
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals']) dump[s] = await DB.all(s);
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) dump[s] = await DB.all(s);
     return dump;
   }
 
@@ -1511,7 +1697,7 @@ const App = (function () {
     try {
       const dump = JSON.parse(await file.text());
       await DB.clearData(); // remplace les donnees, mais conserve licence / PIN / essai (store meta)
-      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals']) {
+      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) {
         if (Array.isArray(dump[s])) await DB.bulkAdd(s, dump[s]);
       }
       if (dump.meta) { await DB.metaSet('currency', dump.meta.currency || 'FCFA'); await DB.metaSet('threshold', dump.meta.threshold || 80); }
@@ -1698,22 +1884,27 @@ const App = (function () {
       ['Logement', 10000, 60000, ['Loyer']],
       ['Autres', 500, 8000, ['Divers']],
     ];
+    const aCash = await DB.add('accounts', { name: 'Especes', type: 'cash', color: '#f59e0b', icon: 'cash', initialBalance: 260000, archived: false, createdAt: Date.now() });
+    const aMobile = await DB.add('accounts', { name: 'Mobile Money', type: 'mobile', color: '#7c3aed', icon: 'phone', initialBalance: 180000, archived: false, createdAt: Date.now() - 1 });
+    const aBank = await DB.add('accounts', { name: 'Banque', type: 'bank', color: '#0f766e', icon: 'bank', initialBalance: 350000, archived: false, createdAt: Date.now() - 2 });
+    const acctIds = [aCash.id, aMobile.id, aBank.id, aBank.id];
+
     const expenses = [];
     for (let day = 0; day < 90; day++) {
       const n = Math.floor(rnd() * 4);
       for (let i = 0; i < n; i++) {
         const p = pick(profils);
-        expenses.push({ amount: Math.round((p[1] + rnd() * (p[2] - p[1])) / 50) * 50, categoryId: catBy[p[0]], description: pick(p[3]), date: isoOf(day), method: pick(['cash', 'cash', 'mobile', 'transfer']), note: '', createdAt: Date.now() - day * 86400000 - i });
+        expenses.push({ amount: Math.round((p[1] + rnd() * (p[2] - p[1])) / 50) * 50, categoryId: catBy[p[0]], description: pick(p[3]), date: isoOf(day), method: pick(['cash', 'cash', 'mobile', 'transfer']), accountId: pick(acctIds), note: '', createdAt: Date.now() - day * 86400000 - i });
       }
     }
     await DB.bulkAdd('expenses', expenses);
 
     const incomes = [];
     for (let mois = 0; mois < 3; mois++) {
-      incomes.push({ amount: 185000, sourceId: srcBy['Salaire'], description: 'Salaire mensuel', date: isoOf(mois * 30 + 3), method: 'transfer', recurring: true, note: '', createdAt: Date.now() - mois * 2592000000 });
-      incomes.push({ amount: 45000, sourceId: srcBy['Location'], description: 'Loyer encaisse', date: isoOf(mois * 30 + 5), method: 'cash', recurring: true, note: '', createdAt: Date.now() - mois * 2592000000 - 1 });
+      incomes.push({ amount: 185000, sourceId: srcBy['Salaire'], description: 'Salaire mensuel', date: isoOf(mois * 30 + 3), method: 'transfer', accountId: aBank.id, recurring: true, note: '', createdAt: Date.now() - mois * 2592000000 });
+      incomes.push({ amount: 45000, sourceId: srcBy['Location'], description: 'Loyer encaisse', date: isoOf(mois * 30 + 5), method: 'cash', accountId: aCash.id, recurring: true, note: '', createdAt: Date.now() - mois * 2592000000 - 1 });
     }
-    for (let i = 0; i < 9; i++) { const nom = pick(['Freelance', 'Commerce', 'Vente', 'Cadeau', 'Bourse']); incomes.push({ amount: Math.round((8000 + rnd() * 80000) / 500) * 500, sourceId: srcBy[nom], description: 'Rentree ' + nom.toLowerCase(), date: isoOf(Math.floor(rnd() * 85)), method: pick(['cash', 'mobile', 'transfer']), recurring: false, note: '', createdAt: Date.now() - i }); }
+    for (let i = 0; i < 9; i++) { const nom = pick(['Freelance', 'Commerce', 'Vente', 'Cadeau', 'Bourse']); incomes.push({ amount: Math.round((8000 + rnd() * 80000) / 500) * 500, sourceId: srcBy[nom], description: 'Rentree ' + nom.toLowerCase(), date: isoOf(Math.floor(rnd() * 85)), method: pick(['cash', 'mobile', 'transfer']), accountId: pick(acctIds), recurring: false, note: '', createdAt: Date.now() - i }); }
     await DB.bulkAdd('incomes', incomes);
 
     await DB.bulkAdd('limits', [
@@ -1767,6 +1958,9 @@ const App = (function () {
     [/^#\/goals/, () => Views.goals()],
     [/^#\/goal\/new/, () => Views.goalForm(null)],
     [/^#\/goal\/(\d+)/, (m) => Views.goalForm(Number(m[1]))],
+    [/^#\/accounts/, () => Views.accounts()],
+    [/^#\/account\/new/, () => Views.accountForm(null)],
+    [/^#\/account\/(\d+)/, (m) => Views.accountForm(Number(m[1]))],
     [/^#\/upcoming/, () => Views.upcoming()],
     [/^#\/categories/, () => Views.categories()],
     [/^#\/category\/(\d+)/, (m) => refEditView({ store: 'categories', base: '#/categories', tab: null }, Number(m[1]))],
@@ -1774,6 +1968,7 @@ const App = (function () {
     [/^#\/source\/(\d+)/, (m) => refEditView({ store: 'sources', base: '#/sources', tab: 'incomes' }, Number(m[1]))],
     [/^#\/reports/, () => Views.reports()],
     [/^#\/settings/, () => Views.settings()],
+    [/^#\/welcome/, () => Views.welcome()],
   ];
 
   let routing = false;
@@ -1803,6 +1998,12 @@ const App = (function () {
     // Code de licence : uniquement dans l'APK Android (pont natif present).
     if (window.AndroidBridge) await enforceLicense();
     await guardLock();
+    // Onboarding : au tout premier lancement (app vide), on ouvre l'assistant.
+    if (!await DB.metaGet('onboarded', false)) {
+      const empty = !State.data.expenses.length && !State.data.incomes.length && !State.data.accounts.length;
+      if (empty) location.hash = '#/welcome';
+      else await DB.metaSet('onboarded', true); // utilisateur existant : pas d'assistant
+    }
     window.addEventListener('hashchange', route);
     route();
     syncReminders(); // rappels : replanifie selon l'etat au demarrage

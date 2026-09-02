@@ -10,6 +10,8 @@ const Seed = (function () {
     // Sources de revenus
     salary: '💼', freelance: '💻', business: '🏪', scholarship: '🎓', rent: '🏘️',
     sale: '🏷️', interest: '📈', gift: '🎁',
+    // Comptes / portefeuilles
+    cash: '💵', bank: '🏦', wallet: '👛',
   };
 
   function icon(name) { return ICONS[name] || ICONS.other; }
