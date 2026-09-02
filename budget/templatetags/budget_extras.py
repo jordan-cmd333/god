@@ -14,6 +14,8 @@ ICONS = {
     # Sources de revenus
     'salary': '💼', 'freelance': '💻', 'business': '🏪', 'scholarship': '🎓',
     'rent': '🏘️', 'sale': '🏷️', 'interest': '📈', 'gift': '🎁',
+    # Comptes / portefeuilles
+    'cash': '💵', 'bank': '🏦', 'wallet': '👛',
 }
 
 

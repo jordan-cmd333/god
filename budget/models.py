@@ -24,6 +24,10 @@ class Profile(models.Model):
         'derniere sauvegarde', null=True, blank=True,
         help_text='Horodatage du dernier export complet des donnees.',
     )
+    onboarded = models.BooleanField(
+        'assistant termine', default=False,
+        help_text="Vrai une fois l'assistant de premier lancement passe.",
+    )
 
     def __str__(self):
         return f'Profil de {self.user}'
@@ -113,6 +117,11 @@ class Expense(models.Model):
     goal = models.ForeignKey(
         'SavingsGoal', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='contributions', verbose_name='objectif',
+    )
+    # Compte d'ou sort l'argent (especes, mobile money, banque...).
+    account = models.ForeignKey(
+        'Account', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='expenses', verbose_name='compte',
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -211,6 +220,11 @@ class Income(models.Model):
         help_text='A cocher pour un revenu qui revient chaque periode (salaire, loyer...).',
     )
     note = models.TextField('note', blank=True)
+    # Compte credite par cette rentree.
+    account = models.ForeignKey(
+        'Account', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='incomes', verbose_name='compte',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -471,3 +485,45 @@ class SavingsGoal(models.Model):
     @property
     def reached(self):
         return self.target_amount > 0 and self.saved >= self.target_amount
+
+
+class Account(models.Model):
+    """Compte / portefeuille (especes, mobile money, banque...). Le solde est
+    derive : solde initial + revenus − depenses affectes au compte."""
+
+    class Type(models.TextChoices):
+        CASH = 'cash', 'Especes'
+        MOBILE = 'mobile', 'Mobile money'
+        BANK = 'bank', 'Banque'
+        OTHER = 'other', 'Autre'
+
+    # Mode de paiement correspondant au type de compte (pour l'historique/exports).
+    TYPE_METHOD = {'cash': 'cash', 'mobile': 'mobile', 'bank': 'transfer', 'other': 'other'}
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='accounts'
+    )
+    name = models.CharField('nom', max_length=60)
+    type = models.CharField('type', max_length=8, choices=Type.choices, default=Type.CASH)
+    initial_balance = models.DecimalField('solde initial', max_digits=12, decimal_places=2, default=0)
+    color = models.CharField('couleur', max_length=9, default='#0f766e')
+    icon = models.CharField('icone', max_length=20, default='wallet')
+    is_archived = models.BooleanField('archive', default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'compte'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.get_type_display()})'
+
+    @cached_property
+    def balance(self):
+        inc = self.incomes.aggregate(t=models.Sum('amount'))['t'] or Decimal('0')
+        exp = self.expenses.aggregate(t=models.Sum('amount'))['t'] or Decimal('0')
+        return self.initial_balance + inc - exp
+
+    @property
+    def method(self):
+        return self.TYPE_METHOD.get(self.type, 'cash')

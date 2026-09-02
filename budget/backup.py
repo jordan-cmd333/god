@@ -17,7 +17,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from .models import (
-    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    Account, Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
     RecurringTransaction, Report, SavingsGoal,
 )
 
@@ -51,17 +51,24 @@ def export_payload(user):
              'icon': s.icon, 'is_archived': s.is_archived}
             for s in IncomeSource.objects.filter(user=user).order_by('id')
         ],
+        'accounts': [
+            {'id': a.id, 'name': a.name, 'type': a.type,
+             'initial_balance': str(a.initial_balance), 'color': a.color,
+             'icon': a.icon, 'is_archived': a.is_archived}
+            for a in Account.objects.filter(user=user).order_by('id')
+        ],
         'expenses': [
             {'amount': str(e.amount), 'category_id': e.category_id,
              'description': e.description, 'date': e.date.isoformat(),
              'payment_method': e.payment_method, 'note': e.note,
-             'goal_id': e.goal_id}
+             'goal_id': e.goal_id, 'account_id': e.account_id}
             for e in Expense.objects.filter(user=user).order_by('id')
         ],
         'incomes': [
             {'amount': str(i.amount), 'source_id': i.source_id,
              'description': i.description, 'date': i.date.isoformat(),
-             'method': i.method, 'is_recurring': i.is_recurring, 'note': i.note}
+             'method': i.method, 'is_recurring': i.is_recurring, 'note': i.note,
+             'account_id': i.account_id}
             for i in Income.objects.filter(user=user).order_by('id')
         ],
         'limits': [
@@ -111,6 +118,7 @@ def import_payload(user, data):
     BudgetLimit.objects.filter(user=user).delete()
     RecurringTransaction.objects.filter(user=user).delete()  # FK PROTECT -> cat/source
     SavingsGoal.objects.filter(user=user).delete()
+    Account.objects.filter(user=user).delete()
     Category.objects.filter(user=user).delete()
     IncomeSource.objects.filter(user=user).delete()
 
@@ -128,7 +136,7 @@ def import_payload(user, data):
             icon=s.get('icon', 'other'), is_archived=bool(s.get('is_archived', False)),
         )
 
-    # Objectifs avant les depenses : celles-ci peuvent y etre liees (goal_id).
+    # Objectifs et comptes avant les transactions : celles-ci peuvent y etre liees.
     goal_map = {}
     for g in data.get('goals', []):
         goal_map[g.get('id')] = SavingsGoal.objects.create(
@@ -137,28 +145,39 @@ def import_payload(user, data):
             color=g.get('color', '#0f766e'), icon=g.get('icon', 'saving'),
             is_archived=bool(g.get('is_archived', False)),
         )
+    acc_map = {}
+    for a in data.get('accounts', []):
+        acc_map[a.get('id')] = Account.objects.create(
+            user=user, name=a['name'], type=a.get('type', 'cash'),
+            initial_balance=Decimal(str(a.get('initial_balance', '0'))),
+            color=a.get('color', '#0f766e'), icon=a.get('icon', 'wallet'),
+            is_archived=bool(a.get('is_archived', False)),
+        )
 
     for e in data.get('expenses', []):
         category = cat_map.get(e.get('category_id'))
         if category is None:
             continue  # depense orpheline (categorie absente du fichier) : ignoree
-        gid = e.get('goal_id')
+        gid, aid = e.get('goal_id'), e.get('account_id')
         Expense.objects.create(
             user=user, category=category, amount=Decimal(str(e['amount'])),
             description=e.get('description', ''), date=date.fromisoformat(e['date']),
             payment_method=e.get('payment_method', 'cash'), note=e.get('note', ''),
             goal=goal_map.get(gid) if gid is not None else None,
+            account=acc_map.get(aid) if aid is not None else None,
         )
 
     for i in data.get('incomes', []):
         source = src_map.get(i.get('source_id'))
         if source is None:
             continue
+        aid = i.get('account_id')
         Income.objects.create(
             user=user, source=source, amount=Decimal(str(i['amount'])),
             description=i.get('description', ''), date=date.fromisoformat(i['date']),
             method=i.get('method', 'cash'), is_recurring=bool(i.get('is_recurring', False)),
             note=i.get('note', ''),
+            account=acc_map.get(aid) if aid is not None else None,
         )
 
     for l in data.get('limits', []):

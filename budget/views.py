@@ -15,12 +15,12 @@ from django.views.decorators.http import require_POST
 
 from . import backup, exports, services
 from .forms import (
-    BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm, IncomeFilterForm,
-    IncomeForm, IncomeSourceForm, ProfileForm, RecurringTransactionForm,
-    SavingsGoalForm, SignUpForm,
+    AccountForm, BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm,
+    IncomeFilterForm, IncomeForm, IncomeSourceForm, ProfileForm,
+    RecurringTransactionForm, SavingsGoalForm, SignUpForm,
 )
 from .models import (
-    Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    Account, Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
     RecurringTransaction, SavingsGoal,
 )
 
@@ -48,6 +48,17 @@ def signup(request):
 
 @login_required
 def dashboard(request):
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    # Onboarding : au premier passage (compte vide), on ouvre l'assistant.
+    if not profile.onboarded:
+        empty = not (Expense.objects.filter(user=request.user).exists()
+                     or Income.objects.filter(user=request.user).exists()
+                     or Account.objects.filter(user=request.user).exists())
+        if empty:
+            return redirect('onboarding')
+        profile.onboarded = True
+        profile.save(update_fields=['onboarded'])
+
     context = services.dashboard_context(request.user)
     context['chart_categories'] = json.dumps([
         {'label': r['name'], 'value': float(r['total']), 'color': r['color']}
@@ -56,7 +67,9 @@ def dashboard(request):
     context['chart_timeline'] = json.dumps(context['timeline'])
     context['quick_form'] = ExpenseForm(user=request.user)
     context['due_recurrences'] = services.due_recurrences(request.user)
-    profile = getattr(request.user, 'profile', None)
+    dash_accounts = list(Account.objects.filter(user=request.user, is_archived=False))
+    context['accounts'] = dash_accounts
+    context['accounts_total'] = sum((a.balance for a in dash_accounts), Decimal('0'))
     snooze = request.session.get('backup_snooze_until')
     snoozed = bool(snooze and snooze > timezone.now().isoformat())
     context['backup_due'] = (not snoozed) and backup.is_backup_due(request.user)
@@ -699,6 +712,91 @@ def goal_contribute(request, pk):
 
 
 # --------------------------------------------------------------------------
+# Comptes / portefeuilles
+# --------------------------------------------------------------------------
+
+@login_required
+def account_list(request):
+    accounts = list(Account.objects.filter(user=request.user, is_archived=False))
+    return render(request, 'accounts.html', {
+        'accounts': accounts,
+        'total': sum((a.balance for a in accounts), Decimal('0')),
+    })
+
+
+@login_required
+def account_create(request):
+    form = AccountForm(request.POST or None, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Compte cree.')
+        return redirect('account_list')
+    return render(request, 'account_form.html', {'form': form, 'is_edit': False})
+
+
+@login_required
+def account_edit(request, pk):
+    account = get_object_or_404(Account, pk=pk, user=request.user)
+    form = AccountForm(request.POST or None, instance=account, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Compte mis a jour.')
+        return redirect('account_list')
+    return render(request, 'account_form.html', {'form': form, 'is_edit': True, 'account': account})
+
+
+@login_required
+@require_POST
+def account_delete(request, pk):
+    # SET_NULL : les operations liees sont conservees, simplement deliees.
+    get_object_or_404(Account, pk=pk, user=request.user).delete()
+    messages.success(request, 'Compte supprime. Les operations sont conservees.')
+    return redirect('account_list')
+
+
+# --------------------------------------------------------------------------
+# Onboarding (assistant de premier lancement)
+# --------------------------------------------------------------------------
+
+ONBOARDING_ACCOUNTS = [('Especes', 'cash', '#f59e0b'),
+                       ('Mobile Money', 'mobile', '#7c3aed'),
+                       ('Banque', 'bank', '#0f766e')]
+
+
+@login_required
+def onboarding(request):
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        if 'skip' not in request.POST:
+            profile.currency = (request.POST.get('currency') or 'FCFA').strip() or 'FCFA'
+            for name, atype, color in ONBOARDING_ACCOUNTS:
+                raw = (request.POST.get('balance_' + atype) or '').strip()
+                if not raw:
+                    continue
+                try:
+                    bal = Decimal(raw)
+                except InvalidOperation:
+                    continue
+                Account.objects.create(
+                    user=request.user, name=name, type=atype, initial_balance=bal,
+                    color=color, icon=AccountForm.ICON_FOR_TYPE[atype])
+            raw_budget = (request.POST.get('budget') or '').strip()
+            if raw_budget:
+                try:
+                    amount = Decimal(raw_budget)
+                    if amount > 0:
+                        BudgetLimit.objects.create(user=request.user, period='month',
+                                                   category=None, amount=amount, is_active=True)
+                except InvalidOperation:
+                    pass
+        profile.onboarded = True
+        profile.save()
+        messages.success(request, 'Tout est pret !')
+        return redirect('dashboard')
+    return render(request, 'onboarding.html', {'accounts': ONBOARDING_ACCOUNTS})
+
+
+# --------------------------------------------------------------------------
 # Parametres
 # --------------------------------------------------------------------------
 
@@ -727,6 +825,8 @@ def settings_view(request):
             'recurrences': RecurringTransaction.objects.filter(
                 user=request.user, is_active=True).count(),
             'goals': SavingsGoal.objects.filter(
+                user=request.user, is_archived=False).count(),
+            'accounts': Account.objects.filter(
                 user=request.user, is_archived=False).count(),
         },
     })

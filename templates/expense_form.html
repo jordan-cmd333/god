@@ -52,8 +52,13 @@
         {{ form.date.errors }}
       </div>
       <div class="field">
-        <label for="{{ form.payment_method.id_for_label }}">Mode de paiement</label>
-        {{ form.payment_method }}
+        {% if form.account.field.queryset %}
+          <label for="{{ form.account.id_for_label }}">Compte</label>
+          {{ form.account }}
+        {% else %}
+          <label for="{{ form.payment_method.id_for_label }}">Mode de paiement</label>
+          {{ form.payment_method }}
+        {% endif %}
       </div>
     </div>
 

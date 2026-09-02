@@ -49,8 +49,13 @@
         {{ form.date.errors }}
       </div>
       <div class="field">
-        <label for="{{ form.method.id_for_label }}">Mode de reception</label>
-        {{ form.method }}
+        {% if form.account.field.queryset %}
+          <label for="{{ form.account.id_for_label }}">Compte</label>
+          {{ form.account }}
+        {% else %}
+          <label for="{{ form.method.id_for_label }}">Mode de reception</label>
+          {{ form.method }}
+        {% endif %}
       </div>
     </div>
 

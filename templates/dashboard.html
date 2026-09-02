@@ -111,6 +111,29 @@
   {% include 'partials/balance.html' with balance=balance %}
 </div>
 
+{# --------------------------------------------------------------- Comptes #}
+{% if accounts %}
+<div class="card">
+  <h2 class="card-title">Comptes <a href="{% url 'account_list' %}">Gerer</a></h2>
+  <div class="limit-head" style="margin-bottom:8px">
+    <span class="limit-name">Total disponible</span>
+    <span class="limit-amounts"><b>{{ accounts_total|money }} {{ currency }}</b></span>
+  </div>
+  <ul class="list">
+    {% for account in accounts %}
+      <li class="row">
+        <span class="row-icon" style="background:{{ account.color }}">{{ account.icon|icon }}</span>
+        <span class="row-main">
+          <span class="t">{{ account.name }}</span>
+          <span class="s">{{ account.get_type_display }}</span>
+        </span>
+        <span class="row-amount">{{ account.balance|money }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {# -------------------------------------------------- Limites budgetaires #}
 <div class="card">
   <h2 class="card-title">

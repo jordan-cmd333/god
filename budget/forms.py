@@ -5,7 +5,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
 from .models import (
-    BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    Account, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
     RecurringTransaction, SavingsGoal,
 )
 
@@ -35,7 +35,7 @@ class ExpenseForm(forms.ModelForm):
 
     class Meta:
         model = Expense
-        fields = ['amount', 'category', 'date', 'payment_method', 'description', 'note']
+        fields = ['amount', 'category', 'date', 'account', 'payment_method', 'description', 'note']
         widgets = {
             'amount': forms.NumberInput(
                 attrs={'inputmode': 'decimal', 'step': '0.01', 'min': '0.01',
@@ -55,12 +55,17 @@ class ExpenseForm(forms.ModelForm):
             user=user, is_archived=False
         )
         self.fields['category'].empty_label = None
+        self.fields['account'].queryset = Account.objects.filter(user=user, is_archived=False)
+        self.fields['account'].required = False
+        self.fields['account'].empty_label = 'Non precise'
         self.fields['description'].required = False
         self.fields['date'].input_formats = ISO_AND_FR
 
     def save(self, commit=True):
         expense = super().save(commit=False)
         expense.user = self.user
+        if expense.account:                       # mode de paiement derive du compte
+            expense.payment_method = expense.account.method
         if commit:
             expense.save()
         return expense
@@ -71,7 +76,7 @@ class IncomeForm(forms.ModelForm):
 
     class Meta:
         model = Income
-        fields = ['amount', 'source', 'date', 'method', 'description',
+        fields = ['amount', 'source', 'date', 'account', 'method', 'description',
                   'is_recurring', 'note']
         widgets = {
             'amount': forms.NumberInput(
@@ -90,12 +95,17 @@ class IncomeForm(forms.ModelForm):
             user=user, is_archived=False
         )
         self.fields['source'].empty_label = None
+        self.fields['account'].queryset = Account.objects.filter(user=user, is_archived=False)
+        self.fields['account'].required = False
+        self.fields['account'].empty_label = 'Non precise'
         self.fields['description'].required = False
         self.fields['date'].input_formats = ISO_AND_FR
 
     def save(self, commit=True):
         income = super().save(commit=False)
         income.user = self.user
+        if income.account:
+            income.method = income.account.method
         if commit:
             income.save()
         return income
@@ -239,6 +249,34 @@ class ProfileForm(forms.ModelForm):
         widgets = {
             'alert_threshold': forms.NumberInput(attrs={'min': 10, 'max': 100}),
         }
+
+
+class AccountForm(forms.ModelForm):
+    """Compte / portefeuille. L'icone est deduite du type."""
+
+    ICON_FOR_TYPE = {'cash': 'cash', 'mobile': 'phone', 'bank': 'bank', 'other': 'wallet'}
+
+    class Meta:
+        model = Account
+        fields = ['name', 'type', 'initial_balance', 'color']
+        widgets = {
+            'name': forms.TextInput(attrs={'placeholder': 'Ex : Orange Money'}),
+            'initial_balance': forms.NumberInput(
+                attrs={'inputmode': 'decimal', 'step': '0.01', 'class': 'amount-input'}),
+            'color': forms.TextInput(attrs={'type': 'color'}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def save(self, commit=True):
+        account = super().save(commit=False)
+        account.user = self.user
+        account.icon = self.ICON_FOR_TYPE.get(account.type, 'wallet')
+        if commit:
+            account.save()
+        return account
 
 
 class SavingsGoalForm(forms.ModelForm):

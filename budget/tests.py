@@ -11,14 +11,17 @@ from django.urls import reverse
 
 from . import services
 from .models import (
-    Alert, BudgetLimit, Category, Expense, Income, IncomeSource,
-    RecurringTransaction, Report, SavingsGoal,
+    Account, Alert, BudgetLimit, Category, Expense, Income, IncomeSource,
+    Profile, RecurringTransaction, Report, SavingsGoal,
 )
 
 
 class BaseCase(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('alice', password='motdepasse-123')
+        # Les utilisateurs de test sont consideres « onboardes » : le tableau de
+        # bord ne les redirige pas vers l'assistant de premier lancement.
+        Profile.objects.filter(user=self.user).update(onboarded=True)
         self.food = Category.objects.get(user=self.user, name='Nourriture')
         self.transport = Category.objects.get(user=self.user, name='Transport')
         self.today = date(2026, 7, 15)  # un mercredi
@@ -590,7 +593,8 @@ class ViewTests(BaseCase):
             'password1': 'un-mot-de-passe-solide-42',
             'password2': 'un-mot-de-passe-solide-42',
         })
-        self.assertRedirects(response, reverse('dashboard'))
+        # Nouvel inscrit : le tableau de bord redirige vers l'assistant.
+        self.assertRedirects(response, reverse('dashboard'), target_status_code=302)
         charlie = User.objects.get(username='charlie')
         self.assertEqual(Category.objects.filter(user=charlie).count(), 11)
 
@@ -916,3 +920,101 @@ class GoalTests(BaseCase):
         payload = json.loads(self.client.get(reverse('export_backup')).content)
         self.assertTrue(any(g['name'] == 'Voyage' for g in payload['goals']))
         self.assertTrue(any(e.get('goal_id') for e in payload['expenses']))
+
+
+class AccountTests(BaseCase):
+    """Comptes / portefeuilles : soldes, affectation, sauvegarde."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+        self.salaire = IncomeSource.objects.get(user=self.user, name='Salaire')
+
+    def test_le_solde_du_compte_est_derive(self):
+        acc = Account.objects.create(user=self.user, name='Cash', type='cash',
+                                     initial_balance=Decimal('50000'))
+        Expense.objects.create(user=self.user, category=self.food, amount=Decimal('12000'),
+                               date=self.today, account=acc)
+        Income.objects.create(user=self.user, source=self.salaire, amount=Decimal('30000'),
+                              date=self.today, account=acc)
+        self.assertEqual(Account.objects.get(pk=acc.pk).balance, Decimal('68000'))
+
+    def test_creation_via_formulaire_derive_l_icone(self):
+        response = self.client.post(reverse('account_create'), {
+            'name': 'Orange Money', 'type': 'mobile',
+            'initial_balance': '40000', 'color': '#7c3aed',
+        })
+        self.assertRedirects(response, reverse('account_list'))
+        acc = Account.objects.get(user=self.user)
+        self.assertEqual(acc.type, 'mobile')
+        self.assertEqual(acc.icon, 'phone')
+
+    def test_depense_affectee_derive_le_mode_de_paiement(self):
+        acc = Account.objects.create(user=self.user, name='Mobile', type='mobile')
+        response = self.client.post(reverse('expense_create'), {
+            'amount': '5000', 'category': self.food.pk, 'date': self.today.isoformat(),
+            'account': acc.pk, 'payment_method': 'cash', 'description': '', 'note': '',
+        })
+        self.assertRedirects(response, reverse('dashboard'))
+        expense = Expense.objects.get(user=self.user)
+        self.assertEqual(expense.account, acc)
+        self.assertEqual(expense.payment_method, 'mobile')
+
+    def test_supprimer_un_compte_conserve_les_operations(self):
+        acc = Account.objects.create(user=self.user, name='Cash', type='cash')
+        Expense.objects.create(user=self.user, category=self.food, amount=Decimal('1000'),
+                               date=self.today, account=acc)
+        self.client.post(reverse('account_delete', args=[acc.pk]))
+        self.assertFalse(Account.objects.filter(pk=acc.pk).exists())
+        self.assertIsNone(Expense.objects.get(user=self.user).account_id)
+
+    def test_les_comptes_sont_isoles_par_utilisateur(self):
+        bob = User.objects.create_user('bob', password='motdepasse-123')
+        acc = Account.objects.create(user=bob, name='Bob', type='cash')
+        self.assertEqual(self.client.get(reverse('account_edit', args=[acc.pk])).status_code, 404)
+
+    def test_la_sauvegarde_inclut_les_comptes_et_le_lien(self):
+        acc = Account.objects.create(user=self.user, name='CompteX', type='bank',
+                                     initial_balance=Decimal('100'))
+        Expense.objects.create(user=self.user, category=self.food, amount=Decimal('10'),
+                               date=self.today, account=acc)
+        payload = json.loads(self.client.get(reverse('export_backup')).content)
+        self.assertTrue(any(a['name'] == 'CompteX' for a in payload['accounts']))
+        self.assertTrue(any(e.get('account_id') for e in payload['expenses']))
+
+    def test_les_vues_exigent_une_connexion(self):
+        self.client.logout()
+        response = self.client.get(reverse('account_list'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/connexion/', response['Location'])
+
+
+class OnboardingTests(TestCase):
+    """Assistant de premier lancement (compte fraichement cree)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('newbie', password='motdepasse-123')
+        self.client.force_login(self.user)   # profile.onboarded = False par defaut
+
+    def test_le_dashboard_redirige_vers_l_assistant(self):
+        self.assertRedirects(self.client.get(reverse('dashboard')), reverse('onboarding'))
+
+    def test_l_assistant_cree_devise_comptes_et_budget(self):
+        response = self.client.post(reverse('onboarding'), {
+            'currency': 'EUR', 'balance_cash': '100000', 'balance_mobile': '50000',
+            'budget': '180000',
+        })
+        self.assertRedirects(response, reverse('dashboard'))
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.onboarded)
+        self.assertEqual(self.user.profile.currency, 'EUR')
+        self.assertEqual(Account.objects.filter(user=self.user).count(), 2)
+        self.assertEqual(
+            BudgetLimit.objects.filter(user=self.user, period='month', category__isnull=True).count(), 1)
+
+    def test_passer_marque_onboarded_sans_rien_creer(self):
+        response = self.client.post(reverse('onboarding'), {'skip': '1'})
+        self.assertRedirects(response, reverse('dashboard'))
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.onboarded)
+        self.assertEqual(Account.objects.filter(user=self.user).count(), 0)

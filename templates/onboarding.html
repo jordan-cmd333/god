@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Bienvenue — Budget Control{% endblock %}
+{% block page_title %}Bienvenue 👋{% endblock %}
+{% block page_subtitle %}Premier lancement{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="helptext">En une minute, mettons en place l'essentiel. Vous pourrez tout modifier ensuite.</p>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+
+  <div class="card">
+    <span class="form-label">1. Votre monnaie</span>
+    <div class="field" style="margin-bottom:0">
+      <input name="currency" value="{{ currency }}" placeholder="FCFA">
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="form-label">2. Vos comptes</span>
+    <p class="helptext" style="margin-bottom:12px">
+      Indiquez le solde des comptes que vous utilisez. Laissez vide ceux que vous n'avez pas.
+    </p>
+    {% for name, atype, color in accounts %}
+      <div class="field">
+        <label>{{ name }}</label>
+        <input name="balance_{{ atype }}" inputmode="decimal" step="0.01"
+               placeholder="Solde actuel (laisser vide si non utilise)">
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <span class="form-label">3. Un budget mensuel (optionnel)</span>
+    <p class="helptext" style="margin-bottom:12px">
+      Une limite de depenses par mois qui vous alerte avant le depassement.
+    </p>
+    <div class="field" style="margin-bottom:0">
+      <label>Limite mensuelle ({{ currency }})</label>
+      <input name="budget" class="amount-input" inputmode="decimal" step="0.01" placeholder="0">
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-block" style="margin-bottom:10px">Terminer</button>
+  <button type="submit" name="skip" value="1" class="btn btn-ghost btn-block">Passer pour l'instant</button>
+</form>
+{% endblock %}

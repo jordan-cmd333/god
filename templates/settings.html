@@ -43,6 +43,14 @@
       <a class="btn btn-ghost btn-sm" href="{% url 'source_list' %}">Gerer</a>
     </li>
     <li class="row">
+      <span class="row-icon" style="background:#0891b2">👛</span>
+      <span class="row-main">
+        <span class="t">Comptes</span>
+        <span class="s">{{ stats.accounts }} compte{{ stats.accounts|pluralize }}</span>
+      </span>
+      <a class="btn btn-ghost btn-sm" href="{% url 'account_list' %}">Gerer</a>
+    </li>
+    <li class="row">
       <span class="row-icon" style="background:#7c3aed">🔁</span>
       <span class="row-main">
         <span class="t">Transactions recurrentes</span>

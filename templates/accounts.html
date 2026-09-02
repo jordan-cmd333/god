@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Comptes — Budget Control{% endblock %}
+{% block page_title %}Comptes{% endblock %}
+{% block page_subtitle %}Especes, mobile money, banque...{% endblock %}
+
+{% block content %}
+
+<div class="btn-row" style="margin-bottom:16px">
+  <a href="{% url 'account_create' %}" class="btn">＋ Nouveau compte</a>
+</div>
+
+{% if accounts %}
+  <div class="card hero">
+    <div class="label">Total sur vos comptes</div>
+    <div class="value">{{ total|money }}<span class="cur">{{ currency }}</span></div>
+  </div>
+  <div class="card">
+    <ul class="list">
+      {% for account in accounts %}
+        <li class="row">
+          <span class="row-icon" style="background:{{ account.color }}">{{ account.icon|icon }}</span>
+          <span class="row-main">
+            <span class="t">{{ account.name }}</span>
+            <span class="s">{{ account.get_type_display }}</span>
+          </span>
+          <span class="row-amount">{{ account.balance|money }}</span>
+          <span class="row-actions" style="margin-left:8px">
+            <a class="btn btn-ghost btn-sm" href="{% url 'account_edit' account.pk %}">✏️</a>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="empty">
+      <span class="big">👛</span>
+      Aucun compte defini.<br>
+      Ajoutez vos especes, mobile money ou compte bancaire.
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

@@ -65,6 +65,15 @@ urlpatterns = [
     path('recurrences/<int:pk>/activer/', views.recurrence_toggle, name='recurrence_toggle'),
     path('a-venir/', views.upcoming, name='upcoming'),
 
+    # Comptes / portefeuilles
+    path('comptes/', views.account_list, name='account_list'),
+    path('comptes/ajouter/', views.account_create, name='account_create'),
+    path('comptes/<int:pk>/modifier/', views.account_edit, name='account_edit'),
+    path('comptes/<int:pk>/supprimer/', views.account_delete, name='account_delete'),
+
+    # Onboarding
+    path('bienvenue/', views.onboarding, name='onboarding'),
+
     # Objectifs d'epargne
     path('objectifs/', views.goal_list, name='goal_list'),
     path('objectifs/ajouter/', views.goal_create, name='goal_create'),
