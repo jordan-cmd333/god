@@ -2005,8 +2005,27 @@ const App = (function () {
       else await DB.metaSet('onboarded', true); // utilisateur existant : pas d'assistant
     }
     window.addEventListener('hashchange', route);
+    setupMenu();
     route();
     syncReminders(); // rappels : replanifie selon l'etat au demarrage
+  }
+
+  // Menu deroulant (bouton ☰) : ouvre/ferme, se ferme au clic dehors ou apres
+  // navigation vers un ecran.
+  function setupMenu() {
+    const btn = document.getElementById('menu-btn');
+    const overlay = document.getElementById('menu-overlay');
+    if (!btn || !overlay) return;
+    const close = () => { overlay.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.hidden = !overlay.hidden;
+      btn.setAttribute('aria-expanded', String(!overlay.hidden));
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target.closest('.menu-item')) close();
+    });
+    window.addEventListener('hashchange', close);
   }
 
   document.addEventListener('DOMContentLoaded', init);

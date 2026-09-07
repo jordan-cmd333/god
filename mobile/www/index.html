@@ -24,12 +24,23 @@
     <span class="sub" id="page-subtitle"></span>
   </h1>
   <div class="header-actions">
+    <button class="icon-btn" id="menu-btn" title="Menu" aria-label="Menu" aria-expanded="false">☰</button>
     <a class="icon-btn" href="#/reports" title="Rapports">📊</a>
     <a class="icon-btn" href="#/settings" title="Parametres">
       ⚙️<span class="badge-dot" id="badge" hidden></span>
     </a>
   </div>
 </header>
+
+<!-- Menu (bouton ☰) : acces rapide aux ecrans secondaires -->
+<div id="menu-overlay" class="menu-overlay" hidden>
+  <nav class="menu-panel" aria-label="Menu">
+    <a class="menu-item" href="#/upcoming"><span class="menu-ico">📅</span> A venir</a>
+    <a class="menu-item" href="#/recurrences"><span class="menu-ico">🔁</span> Transactions recurrentes</a>
+    <a class="menu-item" href="#/goals"><span class="menu-ico">🐖</span> Objectifs d'epargne</a>
+    <a class="menu-item" href="#/accounts"><span class="menu-ico">👛</span> Comptes</a>
+  </nav>
+</div>
 
 <main id="view"></main>
 

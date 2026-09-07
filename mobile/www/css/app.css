@@ -64,6 +64,25 @@ a { color: var(--primary); text-decoration: none; }
 
 .header-actions { display: flex; align-items: center; gap: 6px; }
 
+/* Menu (bouton ☰) --------------------------------------------------------- */
+.menu-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .32); }
+.menu-panel {
+  position: absolute;
+  top: calc(60px + env(safe-area-inset-top, 0px));
+  right: 12px; left: 12px; max-width: 300px; margin-left: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: 0 14px 36px rgba(0, 0, 0, .22);
+  padding: 6px; animation: menu-pop .12s ease-out;
+}
+@keyframes menu-pop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.menu-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 14px; border-radius: 10px;
+  color: var(--text); font-weight: 550; font-size: 14.5px;
+}
+.menu-item:active, .menu-item:hover { background: rgba(15, 118, 110, .09); }
+.menu-ico { font-size: 18px; width: 24px; text-align: center; }
+
 .icon-btn {
   position: relative;
   display: inline-flex;
