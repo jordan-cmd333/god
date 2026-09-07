@@ -17,12 +17,23 @@
     <span class="sub">{% block page_subtitle %}{% endblock %}</span>
   </h1>
   <div class="header-actions">
+    <button class="icon-btn" id="menu-btn" title="Menu" aria-label="Menu" aria-expanded="false">☰</button>
     <a class="icon-btn" href="{% url 'reports' %}" title="Rapports">📊</a>
     <a class="icon-btn" href="{% url 'settings' %}" title="Parametres">
       ⚙️{% if unread_count %}<span class="badge-dot">{{ unread_count }}</span>{% endif %}
     </a>
   </div>
 </header>
+
+<!-- Menu (bouton ☰) : acces rapide aux ecrans secondaires -->
+<div id="menu-overlay" class="menu-overlay" hidden>
+  <nav class="menu-panel" aria-label="Menu">
+    <a class="menu-item" href="{% url 'upcoming' %}"><span class="menu-ico">📅</span> A venir</a>
+    <a class="menu-item" href="{% url 'recurrence_list' %}"><span class="menu-ico">🔁</span> Transactions recurrentes</a>
+    <a class="menu-item" href="{% url 'goal_list' %}"><span class="menu-ico">🐖</span> Objectifs d'epargne</a>
+    <a class="menu-item" href="{% url 'account_list' %}"><span class="menu-ico">👛</span> Comptes</a>
+  </nav>
+</div>
 {% endblock %}
 
 <main>
@@ -60,6 +71,22 @@
 {% endblock %}
 
 <script src="{% static 'js/charts.js' %}"></script>
+<script>
+  // Menu (bouton ☰) : ouvre/ferme, se ferme au clic en dehors.
+  (function () {
+    var btn = document.getElementById('menu-btn');
+    var overlay = document.getElementById('menu-overlay');
+    if (!btn || !overlay) return;
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      overlay.hidden = !overlay.hidden;
+      btn.setAttribute('aria-expanded', String(!overlay.hidden));
+    });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) { overlay.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
+    });
+  })();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
