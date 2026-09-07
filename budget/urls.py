@@ -71,6 +71,13 @@ urlpatterns = [
     path('comptes/<int:pk>/modifier/', views.account_edit, name='account_edit'),
     path('comptes/<int:pk>/supprimer/', views.account_delete, name='account_delete'),
 
+    # Dettes
+    path('dettes/', views.debt_list, name='debt_list'),
+    path('dettes/ajouter/', views.debt_create, name='debt_create'),
+    path('dettes/<int:pk>/modifier/', views.debt_edit, name='debt_edit'),
+    path('dettes/<int:pk>/supprimer/', views.debt_delete, name='debt_delete'),
+    path('dettes/<int:pk>/solder/', views.debt_toggle, name='debt_toggle'),
+
     # Onboarding
     path('bienvenue/', views.onboarding, name='onboarding'),
 

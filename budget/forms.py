@@ -5,7 +5,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
 from .models import (
-    Account, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
+    Account, BudgetLimit, Category, Debt, Expense, Income, IncomeSource, Profile,
     RecurringTransaction, SavingsGoal,
 )
 
@@ -249,6 +249,38 @@ class ProfileForm(forms.ModelForm):
         widgets = {
             'alert_threshold': forms.NumberInput(attrs={'min': 10, 'max': 100}),
         }
+
+
+class DebtForm(forms.ModelForm):
+    """Dette / creance. Le sens est fixe a la creation (via ?dir=)."""
+
+    class Meta:
+        model = Debt
+        fields = ['counterparty', 'amount', 'due_date', 'note']
+        widgets = {
+            'counterparty': forms.TextInput(attrs={'placeholder': 'Nom'}),
+            'amount': forms.NumberInput(
+                attrs={'inputmode': 'decimal', 'step': '0.01', 'min': '0.01',
+                       'placeholder': '0', 'autofocus': True, 'class': 'amount-input'}),
+            'due_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'note': forms.Textarea(attrs={'rows': 2, 'placeholder': 'Motif, conditions...'}),
+        }
+
+    def __init__(self, *args, user=None, direction='i_owe', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.direction = self.instance.direction if self.instance.pk else direction
+        self.fields['due_date'].required = False
+        self.fields['due_date'].input_formats = ISO_AND_FR
+        self.fields['note'].required = False
+
+    def save(self, commit=True):
+        debt = super().save(commit=False)
+        debt.user = self.user
+        debt.direction = self.direction
+        if commit:
+            debt.save()
+        return debt
 
 
 class AccountForm(forms.ModelForm):

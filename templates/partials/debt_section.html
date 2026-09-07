@@ -1,0 +1,35 @@
+{% load budget_extras %}
+{# Contexte : title, subtitle, debts, total, owe (bool), dir. #}
+<div class="card">
+  <h2 class="card-title">{{ title }}</h2>
+  <div class="limit-head" style="margin-bottom:8px">
+    <span class="limit-name">Total {{ subtitle }}</span>
+    <span class="limit-amounts"><b>{{ total|money }} {{ currency }}</b></span>
+  </div>
+  {% if debts %}
+    <ul class="list">
+      {% for d in debts %}
+        <li class="row"{% if d.settled %} style="opacity:.5"{% endif %}>
+          <span class="row-icon" style="background:{% if owe %}#ef4444{% else %}#15803d{% endif %}">{% if owe %}🔻{% else %}🔺{% endif %}</span>
+          <span class="row-main">
+            <span class="t">{{ d.counterparty }}{% if d.settled %} <span class="limit-period">· soldee</span>{% elif d.overdue %} <span class="limit-period" style="color:var(--danger)">· en retard</span>{% endif %}</span>
+            <span class="s">{% if d.due_date %}echeance {{ d.due_date|date:"d/m/Y" }}{% if d.note %} · {% endif %}{% endif %}{{ d.note }}</span>
+          </span>
+          <span class="row-amount">{{ d.amount|money }}</span>
+          <span class="row-actions" style="margin-left:8px">
+            <form method="post" action="{% url 'debt_toggle' d.pk %}" style="display:inline">
+              {% csrf_token %}
+              <button class="btn btn-ghost btn-sm" title="{% if d.settled %}Rouvrir{% else %}Solder{% endif %}">{% if d.settled %}↩{% else %}✓{% endif %}</button>
+            </form>
+            <a class="btn btn-ghost btn-sm" href="{% url 'debt_edit' d.pk %}">✏️</a>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty">
+      <span class="big">🤝</span>
+      {% if owe %}Aucune dette a rembourser.{% else %}Personne ne vous doit d'argent.{% endif %}
+    </div>
+  {% endif %}
+</div>

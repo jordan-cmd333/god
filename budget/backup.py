@@ -17,8 +17,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from .models import (
-    Account, Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
-    RecurringTransaction, Report, SavingsGoal,
+    Account, Alert, BudgetLimit, Category, Debt, Expense, Income, IncomeSource,
+    Profile, RecurringTransaction, Report, SavingsGoal,
 )
 
 FORMAT_VERSION = 1
@@ -92,6 +92,13 @@ def export_payload(user):
              'color': g.color, 'icon': g.icon, 'is_archived': g.is_archived}
             for g in SavingsGoal.objects.filter(user=user).order_by('id')
         ],
+        'debts': [
+            {'direction': d.direction, 'counterparty': d.counterparty,
+             'amount': str(d.amount),
+             'due_date': d.due_date.isoformat() if d.due_date else None,
+             'note': d.note, 'settled': d.settled}
+            for d in Debt.objects.filter(user=user).order_by('id')
+        ],
     }
 
 
@@ -119,6 +126,7 @@ def import_payload(user, data):
     RecurringTransaction.objects.filter(user=user).delete()  # FK PROTECT -> cat/source
     SavingsGoal.objects.filter(user=user).delete()
     Account.objects.filter(user=user).delete()
+    Debt.objects.filter(user=user).delete()
     Category.objects.filter(user=user).delete()
     IncomeSource.objects.filter(user=user).delete()
 
@@ -201,6 +209,14 @@ def import_payload(user, data):
             next_due=date.fromisoformat(r['next_due']),
             is_active=bool(r.get('is_active', True)),
             last_run=date.fromisoformat(r['last_run']) if r.get('last_run') else None,
+        )
+
+    for d in data.get('debts', []):
+        Debt.objects.create(
+            user=user, direction=d.get('direction', 'i_owe'),
+            counterparty=d.get('counterparty', ''), amount=Decimal(str(d['amount'])),
+            due_date=date.fromisoformat(d['due_date']) if d.get('due_date') else None,
+            note=d.get('note', ''), settled=bool(d.get('settled', False)),
         )
 
     # Preferences + horodatage : les donnees correspondent desormais a cette

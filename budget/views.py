@@ -15,13 +15,13 @@ from django.views.decorators.http import require_POST
 
 from . import backup, exports, services
 from .forms import (
-    AccountForm, BudgetLimitForm, CategoryForm, ExpenseFilterForm, ExpenseForm,
-    IncomeFilterForm, IncomeForm, IncomeSourceForm, ProfileForm,
+    AccountForm, BudgetLimitForm, CategoryForm, DebtForm, ExpenseFilterForm,
+    ExpenseForm, IncomeFilterForm, IncomeForm, IncomeSourceForm, ProfileForm,
     RecurringTransactionForm, SavingsGoalForm, SignUpForm,
 )
 from .models import (
-    Account, Alert, BudgetLimit, Category, Expense, Income, IncomeSource, Profile,
-    RecurringTransaction, SavingsGoal,
+    Account, Alert, BudgetLimit, Category, Debt, Expense, Income, IncomeSource,
+    Profile, RecurringTransaction, SavingsGoal,
 )
 
 
@@ -752,6 +752,65 @@ def account_delete(request, pk):
     get_object_or_404(Account, pk=pk, user=request.user).delete()
     messages.success(request, 'Compte supprime. Les operations sont conservees.')
     return redirect('account_list')
+
+
+# --------------------------------------------------------------------------
+# Dettes (ce que je dois / ce qu'on me doit)
+# --------------------------------------------------------------------------
+
+@login_required
+def debt_list(request):
+    debts = Debt.objects.filter(user=request.user)
+    i_owe = [d for d in debts if d.direction == Debt.Direction.I_OWE]
+    owed = [d for d in debts if d.direction == Debt.Direction.OWED_TO_ME]
+    return render(request, 'debts.html', {
+        'i_owe': i_owe, 'owed': owed,
+        'total_i_owe': sum((d.amount for d in i_owe if not d.settled), Decimal('0')),
+        'total_owed': sum((d.amount for d in owed if not d.settled), Decimal('0')),
+    })
+
+
+@login_required
+def debt_create(request):
+    direction = request.POST.get('direction') or request.GET.get('dir') or 'i_owe'
+    if direction not in ('i_owe', 'owed_to_me'):
+        direction = 'i_owe'
+    form = DebtForm(request.POST or None, user=request.user, direction=direction)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Dette ajoutee.')
+        return redirect('debt_list')
+    return render(request, 'debt_form.html', {'form': form, 'direction': direction, 'is_edit': False})
+
+
+@login_required
+def debt_edit(request, pk):
+    debt = get_object_or_404(Debt, pk=pk, user=request.user)
+    form = DebtForm(request.POST or None, instance=debt, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Dette mise a jour.')
+        return redirect('debt_list')
+    return render(request, 'debt_form.html',
+                  {'form': form, 'direction': debt.direction, 'is_edit': True, 'debt': debt})
+
+
+@login_required
+@require_POST
+def debt_delete(request, pk):
+    get_object_or_404(Debt, pk=pk, user=request.user).delete()
+    messages.success(request, 'Dette supprimee.')
+    return redirect('debt_list')
+
+
+@login_required
+@require_POST
+def debt_toggle(request, pk):
+    debt = get_object_or_404(Debt, pk=pk, user=request.user)
+    debt.settled = not debt.settled
+    debt.save(update_fields=['settled'])
+    messages.success(request, 'Dette soldee.' if debt.settled else 'Dette rouverte.')
+    return redirect('debt_list')
 
 
 # --------------------------------------------------------------------------

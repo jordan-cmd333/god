@@ -11,7 +11,7 @@ from django.urls import reverse
 
 from . import services
 from .models import (
-    Account, Alert, BudgetLimit, Category, Expense, Income, IncomeSource,
+    Account, Alert, BudgetLimit, Category, Debt, Expense, Income, IncomeSource,
     Profile, RecurringTransaction, Report, SavingsGoal,
 )
 
@@ -1018,3 +1018,67 @@ class OnboardingTests(TestCase):
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.onboarded)
         self.assertEqual(Account.objects.filter(user=self.user).count(), 0)
+
+
+class DebtTests(BaseCase):
+    """Dettes : ce que je dois / ce qu'on me doit."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+
+    def _debt(self, **kw):
+        defaults = dict(user=self.user, direction='i_owe', counterparty='Kofi',
+                        amount=Decimal('50000'))
+        defaults.update(kw)
+        return Debt.objects.create(**defaults)
+
+    def test_creation_via_formulaire_avec_direction(self):
+        response = self.client.post(reverse('debt_create') + '?dir=owed_to_me', {
+            'direction': 'owed_to_me', 'counterparty': 'Ama',
+            'amount': '30000', 'note': 'Avance',
+        })
+        self.assertRedirects(response, reverse('debt_list'))
+        debt = Debt.objects.get(user=self.user)
+        self.assertEqual(debt.direction, 'owed_to_me')
+        self.assertEqual(debt.counterparty, 'Ama')
+
+    def test_la_liste_separe_les_deux_sens_et_exclut_les_soldees(self):
+        self._debt(direction='i_owe', counterparty='Kofi', amount=Decimal('50000'))
+        self._debt(direction='i_owe', counterparty='Boutique', amount=Decimal('12000'), settled=True)
+        self._debt(direction='owed_to_me', counterparty='Ama', amount=Decimal('30000'))
+        response = self.client.get(reverse('debt_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_i_owe'], Decimal('50000'))   # soldee exclue
+        self.assertEqual(response.context['total_owed'], Decimal('30000'))
+        self.assertContains(response, 'Kofi')
+        self.assertContains(response, 'Ama')
+
+    def test_solder_et_rouvrir(self):
+        debt = self._debt()
+        self.client.post(reverse('debt_toggle', args=[debt.pk]))
+        self.assertTrue(Debt.objects.get(pk=debt.pk).settled)
+        self.client.post(reverse('debt_toggle', args=[debt.pk]))
+        self.assertFalse(Debt.objects.get(pk=debt.pk).settled)
+
+    def test_en_retard(self):
+        past = self._debt(due_date=self.today - timedelta(days=3000))
+        self.assertTrue(Debt.objects.get(pk=past.pk).overdue)
+        settled = self._debt(due_date=self.today - timedelta(days=3000), settled=True)
+        self.assertFalse(Debt.objects.get(pk=settled.pk).overdue)
+
+    def test_isolation_par_utilisateur(self):
+        bob = User.objects.create_user('bob', password='motdepasse-123')
+        debt = Debt.objects.create(user=bob, direction='i_owe', counterparty='X', amount=Decimal('10'))
+        self.assertEqual(self.client.get(reverse('debt_edit', args=[debt.pk])).status_code, 404)
+
+    def test_les_vues_exigent_une_connexion(self):
+        self.client.logout()
+        response = self.client.get(reverse('debt_list'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/connexion/', response['Location'])
+
+    def test_la_sauvegarde_inclut_les_dettes(self):
+        self._debt(counterparty='Kofi', note='Loyer')
+        payload = json.loads(self.client.get(reverse('export_backup')).content)
+        self.assertTrue(any(d['counterparty'] == 'Kofi' for d in payload['debts']))

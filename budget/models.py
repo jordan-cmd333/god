@@ -527,3 +527,36 @@ class Account(models.Model):
     @property
     def method(self):
         return self.TYPE_METHOD.get(self.type, 'cash')
+
+
+class Debt(models.Model):
+    """Dette a rembourser (je dois) ou creance a recevoir (on me doit)."""
+
+    class Direction(models.TextChoices):
+        I_OWE = 'i_owe', 'Je dois'
+        OWED_TO_ME = 'owed_to_me', 'On me doit'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='debts'
+    )
+    direction = models.CharField('sens', max_length=10, choices=Direction.choices)
+    counterparty = models.CharField('crediteur / debiteur', max_length=80)
+    amount = models.DecimalField(
+        'montant', max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    due_date = models.DateField('echeance', null=True, blank=True)
+    note = models.TextField('informations', blank=True)
+    settled = models.BooleanField('soldee', default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'dette'
+        ordering = ['settled', 'due_date', '-created_at']
+
+    def __str__(self):
+        return f'{self.get_direction_display()} {self.counterparty} : {self.amount}'
+
+    @property
+    def overdue(self):
+        return bool(self.due_date and not self.settled and self.due_date < timezone.localdate())

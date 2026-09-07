@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}Dettes — Budget Control{% endblock %}
+{% block page_title %}Dettes{% endblock %}
+{% block page_subtitle %}Ce que je dois et ce qu'on me doit{% endblock %}
+
+{% block content %}
+<div class="btn-row" style="margin-bottom:16px">
+  <a href="{% url 'debt_create' %}?dir=i_owe" class="btn">＋ Je dois</a>
+  <a href="{% url 'debt_create' %}?dir=owed_to_me" class="btn btn-income">＋ On me doit</a>
+</div>
+
+{% include 'partials/debt_section.html' with title='Je dois' subtitle='a rembourser' debts=i_owe total=total_i_owe owe=1 %}
+{% include 'partials/debt_section.html' with title='On me doit' subtitle='a recevoir' debts=owed total=total_owed owe=0 %}
+{% endblock %}

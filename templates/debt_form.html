@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% load budget_extras %}
+
+{% block title %}{% if is_edit %}Modifier{% else %}Nouvelle{% endif %} dette — Budget Control{% endblock %}
+{% block page_title %}{% if is_edit %}Modifier la dette{% elif direction == 'owed_to_me' %}Nouvelle creance{% else %}Nouvelle dette{% endif %}{% endblock %}
+{% block page_subtitle %}Suivi des dettes{% endblock %}
+
+{% block content %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <input type="hidden" name="direction" value="{{ direction }}">
+
+  <div class="card">
+    <div class="field">
+      <label for="{{ form.counterparty.id_for_label }}">{% if direction == 'owed_to_me' %}Debiteur (qui me doit){% else %}Crediteur (a qui je dois){% endif %}</label>
+      {{ form.counterparty }}
+      {{ form.counterparty.errors }}
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="{{ form.amount.id_for_label }}">Montant ({{ currency }})</label>
+        {{ form.amount }}
+        {{ form.amount.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.due_date.id_for_label }}">Echeance (optionnel)</label>
+        {{ form.due_date }}
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="{{ form.note.id_for_label }}">Informations</label>
+      {{ form.note }}
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-block" style="margin-bottom:10px">
+    {% if is_edit %}Enregistrer{% else %}Ajouter la dette{% endif %}
+  </button>
+</form>
+
+{% if is_edit %}
+  <form method="post" action="{% url 'debt_delete' debt.pk %}" style="margin-top:16px"
+        onsubmit="return confirm('Supprimer cette dette ?')">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block">Supprimer cette dette</button>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var input = document.querySelector('.amount-input');
+    if (input && !input.value) input.focus();
+  })();
+</script>
+{% endblock %}
