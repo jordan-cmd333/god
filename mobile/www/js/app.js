@@ -79,7 +79,7 @@ const App = (function () {
 
   async function load() {
     const d = {};
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) {
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts', 'debts']) {
       d[s] = await DB.all(s);
     }
     State.data = d;
@@ -1027,6 +1027,124 @@ const App = (function () {
     });
   }
 
+  // Dettes (ce que je dois / ce qu'on me doit) -----------------------------
+
+  const DEBT_DIRECTIONS = { i_owe: 'Je dois', owed_to_me: 'On me doit' };
+
+  function debtRow(d) {
+    const isOwe = d.direction === 'i_owe';
+    const overdue = d.dueDate && !d.settled && d.dueDate < S.todayISO();
+    const meta = [d.dueDate ? `echeance ${fmtDate(d.dueDate)}` : null, d.note ? esc(d.note) : null]
+      .filter(Boolean).join(' · ');
+    return `<li class="row"${d.settled ? ' style="opacity:.5"' : ''}>
+      <span class="row-icon" style="background:${isOwe ? '#ef4444' : '#15803d'}">${isOwe ? '🔻' : '🔺'}</span>
+      <span class="row-main"><span class="t">${esc(d.counterparty)}${d.settled ? ' <span class="limit-period">· soldee</span>' : ''}${overdue ? ' <span class="limit-period" style="color:var(--danger)">· en retard</span>' : ''}</span>
+        <span class="s">${meta || '—'}</span></span>
+      <span class="row-amount">${money(d.amount)}</span>
+      <span class="row-actions" style="margin-left:8px">
+        <button class="btn btn-ghost btn-sm" data-debt-settle="${d.id}" title="${d.settled ? 'Rouvrir' : 'Marquer soldee'}">${d.settled ? '↩' : '✓'}</button>
+        <a class="btn btn-ghost btn-sm" href="#/debt/${d.id}">✏️</a></span></li>`;
+  }
+
+  function debtSection(direction) {
+    const isOwe = direction === 'i_owe';
+    const items = State.data.debts.filter((d) => d.direction === direction)
+      .sort((a, b) => (a.settled ? 1 : 0) - (b.settled ? 1 : 0)
+        || ((a.dueDate || '9999') < (b.dueDate || '9999') ? -1 : 1));
+    const total = S.sum(items.filter((d) => !d.settled), 'amount');
+    let html = `<div class="card"><h2 class="card-title">${DEBT_DIRECTIONS[direction]}</h2>
+      <div class="limit-head" style="margin-bottom:8px"><span class="limit-name">Total ${isOwe ? 'a rembourser' : 'a recevoir'}</span>
+        <span class="limit-amounts"><b>${money(total)} ${cur()}</b></span></div>`;
+    if (items.length) {
+      html += `<ul class="list">`;
+      items.forEach((d) => html += debtRow(d));
+      html += `</ul>`;
+    } else {
+      html += emptyBlock('🤝', isOwe ? 'Aucune dette a rembourser.' : "Personne ne vous doit d'argent.",
+        `<a href="#/debt/new?dir=${direction}">Ajouter</a>`);
+    }
+    return html + `</div>`;
+  }
+
+  Views.debts = async function () {
+    let html = `<div class="btn-row" style="margin-bottom:16px">
+      <a href="#/debt/new?dir=i_owe" class="btn">＋ Je dois</a>
+      <a href="#/debt/new?dir=owed_to_me" class="btn btn-income">＋ On me doit</a></div>`;
+    html += debtSection('i_owe');
+    html += debtSection('owed_to_me');
+    return {
+      title: 'Dettes', subtitle: "Ce que je dois et ce qu'on me doit", html,
+      mount: (root) => {
+        root.querySelectorAll('[data-debt-settle]').forEach((b) => b.addEventListener('click', async () => {
+          const d = State.data.debts.find((x) => x.id === Number(b.getAttribute('data-debt-settle')));
+          if (!d) return;
+          await DB.put('debts', { ...d, settled: !d.settled });
+          State.data.debts = await DB.all('debts');
+          flash('success', d.settled ? 'Dette rouverte.' : 'Dette soldee.'); go('#/debts');
+        }));
+      },
+    };
+  };
+
+  Views.debtForm = async function (id) {
+    const item = id ? State.data.debts.find((d) => d.id === id) : null;
+    const q = parseQuery();
+    const direction = item ? item.direction : (q.dir === 'owed_to_me' ? 'owed_to_me' : 'i_owe');
+    const isOwe = direction === 'i_owe';
+    const html = `<form data-form="debt">
+      <div class="card">
+        <div class="field"><label>${isOwe ? 'Crediteur (a qui je dois)' : 'Debiteur (qui me doit)'}</label>
+          <input name="counterparty" value="${esc(item ? item.counterparty : '')}" placeholder="Nom" required></div>
+        <div class="form-row">
+          <div class="field"><label>Montant (${cur()})</label>
+            <input name="amount" class="amount-input" inputmode="decimal" step="0.01" min="0.01"
+              value="${item && item.amount != null ? item.amount : ''}" placeholder="0"></div>
+          <div class="field"><label>Echeance (optionnel)</label>
+            <input type="date" name="dueDate" value="${item && item.dueDate ? item.dueDate : ''}"></div>
+        </div>
+        <div class="field" style="margin-bottom:0"><label>Informations</label>
+          <textarea name="note" rows="2" placeholder="Motif, conditions...">${esc(item ? item.note || '' : '')}</textarea></div>
+        <div class="errorlist" data-err hidden></div>
+      </div>
+      <input type="hidden" name="direction" value="${direction}">
+      <button class="btn btn-block" style="margin-bottom:10px">${item ? 'Enregistrer' : 'Ajouter la dette'}</button>
+    </form>
+    ${item ? `<form data-del-debt="${item.id}" style="margin-top:16px">
+      <button class="btn btn-danger btn-block">Supprimer</button></form>` : ''}`;
+    return {
+      title: item ? 'Modifier la dette' : (isOwe ? 'Nouvelle dette' : 'Nouvelle creance'),
+      subtitle: 'Suivi des dettes', html,
+      mount: (root) => {
+        root.querySelector('[data-form="debt"]').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const counterparty = (fd.get('counterparty') || '').trim();
+          const amount = S.round2(parseFloat(fd.get('amount')));
+          const err = root.querySelector('[data-err]');
+          if (!counterparty) { err.hidden = false; err.textContent = 'Nom requis.'; return; }
+          if (!(amount > 0)) { err.hidden = false; err.textContent = 'Montant invalide.'; return; }
+          const rec = {
+            direction: fd.get('direction'), counterparty, amount,
+            dueDate: fd.get('dueDate') || null, note: (fd.get('note') || '').trim(),
+            settled: item ? item.settled : false,
+            createdAt: item ? item.createdAt : Date.now(),
+          };
+          if (item) { rec.id = item.id; await DB.put('debts', rec); } else { await DB.add('debts', rec); }
+          State.data.debts = await DB.all('debts');
+          flash('success', item ? 'Dette mise a jour.' : 'Dette ajoutee.'); go('#/debts');
+        });
+        const del = root.querySelector('[data-del-debt]');
+        if (del) del.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          if (!await confirmModal('Supprimer cette dette ?')) return;
+          await DB.remove('debts', Number(del.getAttribute('data-del-debt')));
+          State.data.debts = await DB.all('debts');
+          flash('success', 'Dette supprimee.'); go('#/debts');
+        });
+      },
+    };
+  };
+
   // A venir (echeances recurrentes + objectifs proches) --------------------
 
   function inDaysLabel(n) { return n <= 0 ? "aujourd'hui" : n === 1 ? 'demain' : `dans ${n} jours`; }
@@ -1616,7 +1734,7 @@ const App = (function () {
 
   async function buildBackup() {
     const dump = { version: 1, exportedAt: new Date().toISOString(), meta: { currency: State.currency, threshold: State.threshold } };
-    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) dump[s] = await DB.all(s);
+    for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts', 'debts']) dump[s] = await DB.all(s);
     return dump;
   }
 
@@ -1697,7 +1815,7 @@ const App = (function () {
     try {
       const dump = JSON.parse(await file.text());
       await DB.clearData(); // remplace les donnees, mais conserve licence / PIN / essai (store meta)
-      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) {
+      for (const s of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts', 'debts']) {
         if (Array.isArray(dump[s])) await DB.bulkAdd(s, dump[s]);
       }
       if (dump.meta) { await DB.metaSet('currency', dump.meta.currency || 'FCFA'); await DB.metaSet('threshold', dump.meta.threshold || 80); }
@@ -1929,6 +2047,12 @@ const App = (function () {
       { amount: 180000, categoryId: catBy['Epargne'], description: "Epargne : Fonds d'urgence", date: S.addDays(todayIso, -20), method: 'transfer', note: '', goalId: g1.id, createdAt: Date.now() },
       { amount: 150000, categoryId: catBy['Epargne'], description: 'Epargne : Rentree scolaire', date: S.addDays(todayIso, -30), method: 'transfer', note: '', goalId: g2.id, createdAt: Date.now() - 1 },
     ]);
+
+    await DB.bulkAdd('debts', [
+      { direction: 'i_owe', counterparty: 'Kofi', amount: 50000, dueDate: S.addDays(todayIso, 15), note: 'Pret pour le loyer', settled: false, createdAt: Date.now() },
+      { direction: 'owed_to_me', counterparty: 'Ama', amount: 30000, dueDate: S.addDays(todayIso, -3), note: 'Avance depannage', settled: false, createdAt: Date.now() - 1 },
+      { direction: 'i_owe', counterparty: 'Boutique du coin', amount: 12000, dueDate: null, note: 'Achat a credit', settled: true, createdAt: Date.now() - 2 },
+    ]);
   }
 
   // --- Routeur ------------------------------------------------------------
@@ -1961,6 +2085,9 @@ const App = (function () {
     [/^#\/accounts/, () => Views.accounts()],
     [/^#\/account\/new/, () => Views.accountForm(null)],
     [/^#\/account\/(\d+)/, (m) => Views.accountForm(Number(m[1]))],
+    [/^#\/debts/, () => Views.debts()],
+    [/^#\/debt\/new/, () => Views.debtForm(null)],
+    [/^#\/debt\/(\d+)/, (m) => Views.debtForm(Number(m[1]))],
     [/^#\/upcoming/, () => Views.upcoming()],
     [/^#\/categories/, () => Views.categories()],
     [/^#\/category\/(\d+)/, (m) => refEditView({ store: 'categories', base: '#/categories', tab: null }, Number(m[1]))],

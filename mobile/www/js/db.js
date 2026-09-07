@@ -10,8 +10,8 @@ const DB = (function () {
   'use strict';
 
   const NAME = 'budget-control';
-  const VERSION = 4;
-  const STORES = ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts', 'meta'];
+  const VERSION = 5;
+  const STORES = ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts', 'debts', 'meta'];
   let db = null;
 
   function open() {
@@ -20,7 +20,7 @@ const DB = (function () {
       const req = indexedDB.open(NAME, VERSION);
       req.onupgradeneeded = (e) => {
         const d = e.target.result;
-        for (const name of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts']) {
+        for (const name of ['categories', 'sources', 'expenses', 'incomes', 'limits', 'alerts', 'recurrences', 'goals', 'accounts', 'debts']) {
           if (!d.objectStoreNames.contains(name)) {
             d.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
           }
