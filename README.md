@@ -121,5 +121,6 @@ filtres et les exports.
 
 `echeancier/` — outil autonome, sans lien avec Budget Control : surveille un
 classeur Excel de suivi de tâches et prévient avant les dates limites
-(notification de bureau, e-mail, rapport HTML). Voir
+(bulle de notification Windows, e-mail, rapport HTML). Prévu pour un poste
+Windows, fonctionne aussi sous Linux et macOS. Voir
 [echeancier/README.md](echeancier/README.md).

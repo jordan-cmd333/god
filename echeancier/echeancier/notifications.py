@@ -1,7 +1,13 @@
-"""Canaux d'avertissement : console, notification de bureau, e-mail, fichier HTML."""
+"""Canaux d'avertissement : console, notification de bureau, e-mail, fichier HTML.
+
+La notification de bureau s'adapte au systeme : bulle toast sous Windows
+(a defaut une fenetre d'alerte), notify-send sous Linux, Centre de
+notifications sous macOS.
+"""
 
 from __future__ import annotations
 
+import os
 import shutil
 import smtplib
 import subprocess
@@ -12,6 +18,61 @@ from email.message import EmailMessage
 from .config import Config
 from .modele import Alerte, Tache
 from .rapport import page_html, resume_court, texte_console, titre_court
+
+
+def plateforme() -> str:
+    """Systeme hote : « windows », « macos » ou « linux »."""
+    if sys.platform.startswith("win"):
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "linux"
+
+
+# Le texte est transmis par variables d'environnement : aucun libelle de tache
+# (apostrophes, guillemets, accents...) ne se retrouve dans le code execute.
+VAR_TITRE = "ECHEANCIER_NOTIF_TITRE"
+VAR_CORPS = "ECHEANCIER_NOTIF_CORPS"
+
+# Identifiant d'application connu de Windows, sans quoi la bulle n'apparait pas.
+AUMID_POWERSHELL = (
+    r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
+)
+
+SCRIPT_TOAST = r"""
+$ErrorActionPreference = 'Stop'
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType=WindowsRuntime] > $null
+$modele = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(
+    [Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+$textes = $modele.GetElementsByTagName('text')
+$textes.Item(0).AppendChild($modele.CreateTextNode($env:%(titre)s)) > $null
+$textes.Item(1).AppendChild($modele.CreateTextNode($env:%(corps)s)) > $null
+$toast = New-Object Windows.UI.Notifications.ToastNotification $modele
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('%(aumid)s').Show($toast)
+""" % {"titre": VAR_TITRE, "corps": VAR_CORPS, "aumid": AUMID_POWERSHELL}
+
+# Repli si les toasts sont indisponibles (Windows 8, notifications desactivees,
+# session sans interface moderne) : une simple boite de dialogue Windows.
+SCRIPT_FENETRE = (
+    "import ctypes, os; "
+    "ctypes.windll.user32.MessageBoxW(0, "
+    f"os.environ['{VAR_CORPS}'], os.environ['{VAR_TITRE}'], 0x40040)"
+)
+
+
+def _environnement(titre: str, corps: str) -> dict[str, str]:
+    return {**os.environ, VAR_TITRE: titre, VAR_CORPS: corps}
+
+
+def _sans_fenetre_console() -> dict:
+    """Empeche l'ouverture d'une console noire sous Windows."""
+    try:
+        infos = subprocess.STARTUPINFO()
+        infos.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        return {"startupinfo": infos, "creationflags": subprocess.CREATE_NO_WINDOW}
+    except AttributeError:      # ailleurs que sous Windows
+        return {}
 
 
 class Notificateur:
@@ -48,9 +109,60 @@ class Notificateur:
 
         return self.erreurs
 
-    # -- canaux -------------------------------------------------------------
+    # -- notification de bureau --------------------------------------------
 
     def _bureau(self, alertes: list[Alerte]) -> None:
+        titre = titre_court(alertes, self.config.titre)
+        corps = resume_court(alertes)
+        urgent = any(a.en_retard or a.jours == 0 for a in alertes)
+
+        systeme = plateforme()
+        if systeme == "windows":
+            self._bureau_windows(titre, corps)
+        elif systeme == "macos":
+            self._bureau_macos(titre, corps)
+        else:
+            self._bureau_linux(titre, corps, urgent)
+
+    def _bureau_windows(self, titre: str, corps: str) -> None:
+        style = self.config.style_bureau
+        if style != "fenetre" and self._toast_windows(titre, corps):
+            return
+        if style == "toast":
+            self.erreurs.append(
+                "Bulle de notification Windows indisponible. Essayez "
+                'style_bureau = "fenetre" dans la configuration.'
+            )
+            return
+        self._fenetre_windows(titre, corps)
+
+    def _toast_windows(self, titre: str, corps: str) -> bool:
+        powershell = shutil.which("powershell") or shutil.which("powershell.exe")
+        if not powershell:
+            return False
+        try:
+            resultat = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-Command", SCRIPT_TOAST],
+                env=_environnement(titre, corps),
+                capture_output=True,
+                timeout=30,
+                **_sans_fenetre_console(),
+            )
+        except (subprocess.SubprocessError, OSError):
+            return False
+        return resultat.returncode == 0
+
+    def _fenetre_windows(self, titre: str, corps: str) -> None:
+        try:
+            subprocess.Popen(
+                [sys.executable, "-c", SCRIPT_FENETRE],
+                env=_environnement(titre, corps),
+                **_sans_fenetre_console(),
+            )
+        except OSError as erreur:
+            self.erreurs.append(f"Notification de bureau echouee : {erreur}")
+
+    def _bureau_linux(self, titre: str, corps: str, urgent: bool) -> None:
         binaire = shutil.which("notify-send")
         if not binaire:
             self.erreurs.append(
@@ -58,22 +170,42 @@ class Notificateur:
                 "(paquet libnotify-bin)."
             )
             return
-        urgence = "critical" if any(a.en_retard or a.jours == 0 for a in alertes) else "normal"
         try:
             subprocess.run(
                 [
                     binaire,
                     "--app-name=Echeancier",
-                    f"--urgency={urgence}",
+                    f"--urgency={'critical' if urgent else 'normal'}",
                     "--icon=appointment-soon",
-                    titre_court(alertes, self.config.titre),
-                    resume_court(alertes),
+                    titre,
+                    corps,
                 ],
                 check=True,
                 timeout=15,
             )
         except (subprocess.SubprocessError, OSError) as erreur:
             self.erreurs.append(f"Notification de bureau echouee : {erreur}")
+
+    def _bureau_macos(self, titre: str, corps: str) -> None:
+        binaire = shutil.which("osascript")
+        if not binaire:
+            self.erreurs.append("Notification de bureau indisponible : osascript introuvable.")
+            return
+        script = (
+            f'display notification (system attribute "{VAR_CORPS}") '
+            f'with title (system attribute "{VAR_TITRE}")'
+        )
+        try:
+            subprocess.run(
+                [binaire, "-e", script],
+                env=_environnement(titre, corps),
+                check=True,
+                timeout=15,
+            )
+        except (subprocess.SubprocessError, OSError) as erreur:
+            self.erreurs.append(f"Notification de bureau echouee : {erreur}")
+
+    # -- autres canaux ------------------------------------------------------
 
     def _fichier(
         self, alertes: list[Alerte], aujourdhui: date, sans_date: list[Tache] | None

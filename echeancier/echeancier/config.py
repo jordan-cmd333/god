@@ -3,22 +3,40 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Cherchee dans le dossier courant, puis a cote de l'outil (pratique pour cron
-# et systemd, qui demarrent avec un repertoire courant quelconque), puis dans
-# la configuration utilisateur.
+WINDOWS = sys.platform.startswith("win")
+
+# Cherchee dans le dossier courant, puis a cote de l'outil (pratique pour cron,
+# systemd ou le Planificateur de taches, qui demarrent avec un repertoire
+# courant quelconque), puis dans la configuration utilisateur.
 RACINE_OUTIL = Path(__file__).resolve().parent.parent
+
+
+def _config_utilisateur() -> Path:
+    if WINDOWS:
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(base) / "Echeancier" / "config.toml"
+    return Path.home() / ".config" / "echeancier" / "config.toml"
+
+
+def _etat_utilisateur() -> Path:
+    if WINDOWS:
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / "Echeancier" / "etat.json"
+    return Path.home() / ".local" / "state" / "echeancier" / "etat.json"
+
 
 CHEMINS_CONFIG = [
     Path("echeancier.toml"),
     RACINE_OUTIL / "echeancier.toml",
-    Path.home() / ".config" / "echeancier" / "config.toml",
+    _config_utilisateur(),
 ]
 
-ETAT_PAR_DEFAUT = Path.home() / ".local" / "state" / "echeancier" / "etat.json"
+ETAT_PAR_DEFAUT = _etat_utilisateur()
 
 
 class ConfigError(Exception):
@@ -50,10 +68,11 @@ class Config:
     rappel_quotidien: bool = False
     ignorer_terminees: bool = True
     canaux: list[str] = field(default_factory=lambda: ["console", "bureau"])
+    style_bureau: str = "auto"   # auto | toast | fenetre (Windows)
     email: ConfigEmail = field(default_factory=ConfigEmail)
     fichier_rapport: Path | None = None
     intervalle_minutes: int = 60
-    chemin_etat: Path = ETAT_PAR_DEFAUT
+    chemin_etat: Path = field(default_factory=_etat_utilisateur)
     titre: str = "Echeances"
 
 
@@ -110,6 +129,7 @@ def charger(explicite: str | None = None, classeur: str | None = None) -> Config
         rappel_quotidien=bool(alertes.get("rappel_quotidien", False)),
         ignorer_terminees=bool(alertes.get("ignorer_terminees", True)),
         canaux=[str(c) for c in notifs.get("canaux", ["console", "bureau"])],
+        style_bureau=str(notifs.get("style_bureau", "auto")).strip().lower(),
         email=ConfigEmail(
             serveur_smtp=str(bloc_email.get("serveur_smtp", "")),
             port=int(bloc_email.get("port", 587)),
@@ -123,16 +143,22 @@ def charger(explicite: str | None = None, classeur: str | None = None) -> Config
         ),
         fichier_rapport=_chemin(rapport) if rapport else None,
         intervalle_minutes=max(1, int(surveillance.get("intervalle_minutes", 60))),
-        chemin_etat=_chemin(etat.get("chemin", str(ETAT_PAR_DEFAUT))),
+        chemin_etat=_chemin(etat.get("chemin") or str(_etat_utilisateur())),
         titre=str(donnees.get("titre", "Echeances")),
     )
 
 
 MODELE_CONFIG = '''# Configuration de l'echeancier. Placez ce fichier a cote du script
-# (echeancier.toml) ou dans ~/.config/echeancier/config.toml.
+# (echeancier.toml), ou dans %APPDATA%\\Echeancier\\config.toml sous Windows
+# et ~/.config/echeancier/config.toml sous Linux.
 titre = "Echeances du service"
 
 [classeur]
+# Windows : entourez le chemin d'apostrophes simples pour garder les
+# antislashs tels quels, par exemple :
+#   chemin = 'C:\\Users\\prenom\\Documents\\taches.xlsx'
+#   chemin = 'C:\\Users\\prenom\\OneDrive - Societe\\Suivi\\taches.xlsx'
+# Les guillemets doubles obligeraient a doubler chaque antislash.
 chemin = "~/Documents/taches.xlsx"
 # feuilles = ["Suivi 2026"]      # vide ou absent = toutes les feuilles
 # Forcer les colonnes si la detection automatique se trompe :
@@ -150,6 +176,7 @@ rappel_quotidien = false       # true = re-alerter chaque jour, pas seulement au
 
 [notifications]
 canaux = ["console", "bureau"]   # au choix : console, bureau, email, fichier
+style_bureau = "auto"            # Windows : auto (toast, sinon fenetre), toast, fenetre
 # fichier_rapport = "~/echeances.html"
 
 [notifications.email]
@@ -164,5 +191,8 @@ destinataires = []
 intervalle_minutes = 60
 
 [etat]
-chemin = "~/.local/state/echeancier/etat.json"
+# Laisser vide pour l'emplacement par defaut :
+#   Windows : %LOCALAPPDATA%\\Echeancier\\etat.json
+#   Linux   : ~/.local/state/echeancier/etat.json
+# chemin = ""
 '''

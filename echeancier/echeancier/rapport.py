@@ -15,14 +15,15 @@ def _puce(alerte: Alerte) -> str:
 
 
 def texte_console(alertes: list[Alerte], aujourdhui: date, titre: str) -> str:
+    """Rendu texte, volontairement en ASCII : lisible sur toutes les consoles."""
     if not alertes:
-        return f"{titre} — {aujourdhui:%d/%m/%Y} : aucune echeance proche."
+        return f"{titre} - {aujourdhui:%d/%m/%Y} : aucune echeance proche."
 
     retards = [a for a in alertes if a.en_retard]
     jour = [a for a in alertes if a.jours == 0]
     proches = [a for a in alertes if a.jours > 0]
 
-    lignes = [f"{titre} — {aujourdhui:%d/%m/%Y}", "=" * 60]
+    lignes = [f"{titre} - {aujourdhui:%d/%m/%Y}", "=" * 60]
     for entete, groupe in (
         ("EN RETARD", retards),
         ("AUJOURD'HUI", jour),
@@ -41,9 +42,9 @@ def texte_console(alertes: list[Alerte], aujourdhui: date, titre: str) -> str:
                 details.append(tache.statut)
             lignes.append(
                 f"  {_puce(alerte)} {tache.libelle}  "
-                f"[{tache.echeance:%d/%m/%Y} · {_delai(alerte.jours)}]"
+                f"[{tache.echeance:%d/%m/%Y} - {_delai(alerte.jours)}]"
             )
-            lignes.append(f"       {' · '.join(details)}")
+            lignes.append(f"       {' | '.join(details)}")
     lignes.append("")
     lignes.append(f"{len(alertes)} tache(s) a surveiller.")
     return "\n".join(lignes)
@@ -61,10 +62,10 @@ def _delai(jours: int) -> str:
 
 def resume_court(alertes: list[Alerte], limite: int = 4) -> str:
     """Corps d'une notification de bureau : concis, quelques lignes au plus."""
-    lignes = [f"{_delai(a.jours)} · {a.tache.libelle}" for a in alertes[:limite]]
+    lignes = [f"{_delai(a.jours)} - {a.tache.libelle}" for a in alertes[:limite]]
     reste = len(alertes) - limite
     if reste > 0:
-        lignes.append(f"… et {reste} autre(s)")
+        lignes.append(f"... et {reste} autre(s)")
     return "\n".join(lignes)
 
 

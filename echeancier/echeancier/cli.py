@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import date
@@ -114,11 +115,11 @@ def commande_colonnes(config: Config, args: argparse.Namespace) -> int:
     print(f"Classeur : {config.chemin_classeur}")
     for feuille, roles in diagnostic.items():
         if not roles:
-            print(f"  [{feuille}] aucune colonne de date limite reconnue — ignoree.")
+            print(f"  [{feuille}] aucune colonne de date limite reconnue - ignoree.")
             continue
-        detail = ", ".join(f"{role} = « {nom} »" for role, nom in roles.items())
+        detail = ", ".join(f'{role} = "{nom}"' for role, nom in roles.items())
         compte = sum(1 for t in taches if t.feuille == feuille)
-        print(f"  [{feuille}] {detail} — {compte} ligne(s) lue(s).")
+        print(f"  [{feuille}] {detail} - {compte} ligne(s) lue(s).")
 
     orphelines = sans_echeance(taches)
     print(f"\n{len(taches)} tache(s) lue(s), {len(alertes)} a signaler aujourd'hui.")
@@ -196,7 +197,26 @@ def construire_parseur() -> argparse.ArgumentParser:
     return parseur
 
 
+def _console_tolerante() -> None:
+    """Rendre les sorties inoffensives quelle que soit la console.
+
+    Sous Windows, une tache planifiee lancee par pythonw.exe n'a pas de
+    console du tout : sys.stdout vaut None et le moindre print echoue. Et une
+    console cp850 ne sait pas ecrire tous les accents.
+    """
+    for nom in ("stdout", "stderr"):
+        flux = getattr(sys, nom, None)
+        if flux is None:
+            setattr(sys, nom, open(os.devnull, "w", encoding="utf-8"))
+            continue
+        try:
+            flux.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _console_tolerante()
     parseur = construire_parseur()
     args = parseur.parse_args(argv)
     commande = args.commande or "verifier"

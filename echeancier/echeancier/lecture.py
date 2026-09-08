@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -48,6 +50,12 @@ MOIS_FR = {
 
 ORIGINE_EXCEL = datetime(1899, 12, 30)
 LIGNES_SCRUTEES = 15
+
+# Sous Windows, Excel remplace le fichier pendant un enregistrement : pendant
+# une fraction de seconde il est verrouille ou incomplet. On retente avant
+# d'abandonner plutot que d'alarmer inutilement.
+TENTATIVES = 3
+PAUSE_TENTATIVE = 1.5
 
 
 class LectureError(Exception):
@@ -184,10 +192,7 @@ def lire_classeur(
             "au format .xlsx depuis Excel."
         )
 
-    try:
-        classeur = load_workbook(chemin, read_only=True, data_only=True)
-    except Exception as erreur:  # fichier corrompu, verrouille, protege...
-        raise LectureError(f"Lecture impossible du classeur : {erreur}") from erreur
+    classeur = _ouvrir(chemin)
 
     toutes: list[Tache] = []
     diagnostic: dict[str, dict[str, str]] = {}
@@ -210,6 +215,25 @@ def lire_classeur(
         classeur.close()
 
     return toutes, diagnostic
+
+
+def _ouvrir(chemin: Path):
+    """Ouvre le classeur, en retentant si Excel est en train de l'enregistrer."""
+    derniere: Exception | None = None
+    for tentative in range(TENTATIVES):
+        try:
+            return load_workbook(chemin, read_only=True, data_only=True)
+        except (PermissionError, zipfile.BadZipFile, OSError) as erreur:
+            derniere = erreur
+            if tentative < TENTATIVES - 1:
+                time.sleep(PAUSE_TENTATIVE)
+        except Exception as erreur:  # classeur protege, format inattendu...
+            raise LectureError(f"Lecture impossible du classeur : {erreur}") from erreur
+    raise LectureError(
+        f"Lecture impossible du classeur : {derniere}. S'il est ouvert dans "
+        "Excel au moment de l'enregistrement, la prochaine verification "
+        "reussira."
+    ) from derniere
 
 
 def _taches_de(
