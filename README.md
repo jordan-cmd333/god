@@ -114,3 +114,12 @@ revenus), les comparaisons, le déclenchement et la déduplication des alertes
 (limites et dépassement des revenus, avec cycle de vie complet), le calcul du
 solde, la génération des rapports, l'isolation des données entre comptes, les
 filtres et les exports.
+
+---
+
+## Autre outil du dépôt
+
+`echeancier/` — outil autonome, sans lien avec Budget Control : surveille un
+classeur Excel de suivi de tâches et prévient avant les dates limites
+(notification de bureau, e-mail, rapport HTML). Voir
+[echeancier/README.md](echeancier/README.md).

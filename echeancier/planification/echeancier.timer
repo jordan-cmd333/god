@@ -1,0 +1,11 @@
+[Unit]
+Description=Verifier les echeances chaque matin (et au demarrage de la session)
+
+[Timer]
+OnCalendar=Mon-Fri 08:30
+OnStartupSec=2min
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

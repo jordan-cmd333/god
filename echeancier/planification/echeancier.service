@@ -1,0 +1,10 @@
+[Unit]
+Description=Verification des echeances du classeur Excel
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+# Adapter le chemin si le depot est ailleurs :
+ExecStart=%h/App/echeancier/echeancier.sh verifier --silencieux
+# Mot de passe SMTP hors du fichier de configuration :
+# Environment=ECHEANCIER_SMTP_MDP=...

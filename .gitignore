@@ -20,3 +20,8 @@ mobile/codes-*.txt
 # Commerce Control : isole sur la branche "commerce", exclu du depot public.
 # (conserve sur le disque — dont la cle privee — mais jamais pousse depuis main)
 /commerce/
+
+# Echeancier : configuration locale (contient le chemin du classeur et le SMTP)
+echeancier/echeancier.toml
+echeancier/*.xlsx
+echeancier/*.html
