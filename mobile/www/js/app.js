@@ -973,6 +973,61 @@ const App = (function () {
 
   // Onboarding : assistant de premier lancement ----------------------------
 
+  // Tutoriel de premier lancement (diapos « Suivant / Passer ») --------------
+
+  const TOUR = [
+    { icon: '👋', title: 'Bienvenue dans Budget Control', text: 'Suivez vos depenses, vos revenus et votre solde — 100 % hors ligne. Vos donnees restent sur votre telephone.' },
+    { icon: '➕', title: 'Notez en 10 secondes', text: "Depuis l'accueil, touchez ＋ Depense ou ＋ Revenu. Un montant, une categorie, et c'est enregistre." },
+    { icon: '💰', title: 'Votre solde en un coup d\'oeil', text: 'Le tableau de bord montre ce qu\'il vous reste ce mois-ci — le reste du mois passe est reporte automatiquement.' },
+    { icon: '🎯', title: 'Budgets & alertes', text: "Fixez des limites de depenses par periode. L'app vous previent avant le depassement." },
+    { icon: '☰', title: 'Tout le reste dans le menu', text: 'Le bouton ☰ en haut ouvre : Recurrences, Objectifs d\'epargne, Comptes, Dettes et Echeances a venir.' },
+    { icon: '🛟', title: 'Pensez a sauvegarder', text: 'Vos donnees vivent sur cet appareil : exportez-les de temps en temps (Parametres) pour ne rien perdre.' },
+  ];
+
+  async function finishTour() {
+    await DB.metaSet('tourSeen', true);
+    const onboarded = await DB.metaGet('onboarded', false);
+    go(onboarded ? '#/' : '#/welcome');
+  }
+
+  Views.tour = async function () {
+    const slides = TOUR.map((s, i) => `<div class="tour-slide" data-slide="${i}"${i === 0 ? '' : ' hidden'}>
+      <div class="tour-emoji">${s.icon}</div>
+      <h2 class="tour-title">${esc(s.title)}</h2>
+      <p class="tour-text">${esc(s.text)}</p></div>`).join('');
+    const dots = TOUR.map((_, i) => `<span class="tour-dot${i === 0 ? ' is-active' : ''}"></span>`).join('');
+    const html = `<div class="tour">
+      <div class="tour-top"><button type="button" class="btn btn-ghost btn-sm" data-tour-skip>Passer</button></div>
+      <div class="tour-body card">${slides}</div>
+      <div class="tour-dots">${dots}</div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-ghost" data-tour-prev hidden>Precedent</button>
+        <button type="button" class="btn btn-block" data-tour-next>Suivant</button>
+      </div>
+    </div>`;
+    return { title: 'Decouverte', subtitle: '', html, mount: mountTour };
+  };
+
+  function mountTour(root) {
+    let i = 0;
+    const slides = root.querySelectorAll('.tour-slide');
+    const dots = root.querySelectorAll('.tour-dot');
+    const prev = root.querySelector('[data-tour-prev]');
+    const next = root.querySelector('[data-tour-next]');
+    const show = (n) => {
+      i = n;
+      slides.forEach((s, k) => { s.hidden = k !== n; });
+      dots.forEach((d, k) => d.classList.toggle('is-active', k === n));
+      prev.hidden = n === 0;
+      next.textContent = n === slides.length - 1 ? 'Commencer' : 'Suivant';
+    };
+    next.addEventListener('click', async () => {
+      if (i < slides.length - 1) show(i + 1); else await finishTour();
+    });
+    prev.addEventListener('click', () => show(Math.max(0, i - 1)));
+    root.querySelector('[data-tour-skip]').addEventListener('click', finishTour);
+  }
+
   function welcomeAccountRow(name, type) {
     return `<div class="field"><label>${esc(name)}</label>
       <input data-acct-type="${type}" data-acct-name="${esc(name)}" inputmode="decimal" step="0.01"
@@ -2096,6 +2151,7 @@ const App = (function () {
     [/^#\/reports/, () => Views.reports()],
     [/^#\/settings/, () => Views.settings()],
     [/^#\/welcome/, () => Views.welcome()],
+    [/^#\/tour/, () => Views.tour()],
   ];
 
   let routing = false;
@@ -2125,11 +2181,15 @@ const App = (function () {
     // Code de licence : uniquement dans l'APK Android (pont natif present).
     if (window.AndroidBridge) await enforceLicense();
     await guardLock();
-    // Onboarding : au tout premier lancement (app vide), on ouvre l'assistant.
+    // Premier lancement (app vide) : tutoriel puis assistant. Un utilisateur
+    // existant (qui a deja des donnees) ne voit ni l'un ni l'autre.
     if (!await DB.metaGet('onboarded', false)) {
       const empty = !State.data.expenses.length && !State.data.incomes.length && !State.data.accounts.length;
-      if (empty) location.hash = '#/welcome';
-      else await DB.metaSet('onboarded', true); // utilisateur existant : pas d'assistant
+      if (empty) {
+        location.hash = (await DB.metaGet('tourSeen', false)) ? '#/welcome' : '#/tour';
+      } else {
+        await DB.metaSet('onboarded', true);
+      }
     }
     window.addEventListener('hashchange', route);
     setupMenu();
