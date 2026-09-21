@@ -78,7 +78,8 @@ urlpatterns = [
     path('dettes/<int:pk>/supprimer/', views.debt_delete, name='debt_delete'),
     path('dettes/<int:pk>/solder/', views.debt_toggle, name='debt_toggle'),
 
-    # Onboarding
+    # Decouverte (tutoriel) + Onboarding
+    path('decouverte/', views.tour, name='tour'),
     path('bienvenue/', views.onboarding, name='onboarding'),
 
     # Objectifs d'epargne

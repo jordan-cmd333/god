@@ -28,6 +28,10 @@ class Profile(models.Model):
         'assistant termine', default=False,
         help_text="Vrai une fois l'assistant de premier lancement passe.",
     )
+    tour_seen = models.BooleanField(
+        'tutoriel vu', default=False,
+        help_text='Vrai une fois le tutoriel de decouverte passe.',
+    )
 
     def __str__(self):
         return f'Profil de {self.user}'

@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}Decouverte — Budget Control{% endblock %}
+{% block page_title %}Decouverte{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{% block nav %}{% endblock %}
+
+{% block content %}
+<form method="post" id="tour-form">
+  {% csrf_token %}
+  <div class="tour-top">
+    <button type="submit" class="btn btn-ghost btn-sm">Passer</button>
+  </div>
+
+  <div class="tour-body card">
+    {% for icon, title, text in slides %}
+      <div class="tour-slide" data-slide="{{ forloop.counter0 }}"{% if not forloop.first %} hidden{% endif %}>
+        <div class="tour-emoji">{{ icon }}</div>
+        <h2 class="tour-title">{{ title }}</h2>
+        <p class="tour-text">{{ text }}</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="tour-dots">
+    {% for _ in slides %}<span class="tour-dot{% if forloop.first %} is-active{% endif %}"></span>{% endfor %}
+  </div>
+
+  <div class="btn-row">
+    <button type="button" class="btn btn-ghost" id="tour-prev" hidden>Precedent</button>
+    <button type="button" class="btn btn-block" id="tour-next">Suivant</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var i = 0;
+    var slides = document.querySelectorAll('.tour-slide');
+    var dots = document.querySelectorAll('.tour-dot');
+    var prev = document.getElementById('tour-prev');
+    var next = document.getElementById('tour-next');
+    var form = document.getElementById('tour-form');
+    function show(n) {
+      i = n;
+      slides.forEach(function (s, k) { s.hidden = k !== n; });
+      dots.forEach(function (d, k) { d.classList.toggle('is-active', k === n); });
+      prev.hidden = n === 0;
+      next.textContent = n === slides.length - 1 ? 'Commencer' : 'Suivant';
+    }
+    next.addEventListener('click', function () {
+      if (i < slides.length - 1) show(i + 1); else form.submit();
+    });
+    prev.addEventListener('click', function () { show(Math.max(0, i - 1)); });
+  })();
+</script>
+{% endblock %}

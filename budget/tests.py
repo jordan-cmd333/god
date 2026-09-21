@@ -994,6 +994,8 @@ class OnboardingTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user('newbie', password='motdepasse-123')
+        # Tutoriel deja vu : le dashboard enchaine directement sur l'assistant.
+        Profile.objects.filter(user=self.user).update(tour_seen=True)
         self.client.force_login(self.user)   # profile.onboarded = False par defaut
 
     def test_le_dashboard_redirige_vers_l_assistant(self):
@@ -1018,6 +1020,29 @@ class OnboardingTests(TestCase):
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.onboarded)
         self.assertEqual(Account.objects.filter(user=self.user).count(), 0)
+
+
+class TourTests(TestCase):
+    """Tutoriel de decouverte (avant l'assistant, au tout premier lancement)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('rookie', password='motdepasse-123')
+        self.client.force_login(self.user)   # tour_seen = onboarded = False
+
+    def test_le_dashboard_redirige_vers_le_tutoriel(self):
+        self.assertRedirects(self.client.get(reverse('dashboard')), reverse('tour'))
+
+    def test_terminer_le_tutoriel_mene_a_l_assistant(self):
+        response = self.client.post(reverse('tour'))
+        # tour_seen pose, puis le dashboard enchaine vers l'assistant.
+        self.assertRedirects(response, reverse('dashboard'), target_status_code=302)
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.tour_seen)
+
+    def test_le_tutoriel_repond(self):
+        response = self.client.get(reverse('tour'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Bienvenue')
 
 
 class DebtTests(BaseCase):

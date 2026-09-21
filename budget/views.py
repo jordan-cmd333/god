@@ -55,6 +55,8 @@ def dashboard(request):
                      or Income.objects.filter(user=request.user).exists()
                      or Account.objects.filter(user=request.user).exists())
         if empty:
+            if not profile.tour_seen:
+                return redirect('tour')      # tutoriel de decouverte d'abord
             return redirect('onboarding')
         profile.onboarded = True
         profile.save(update_fields=['onboarded'])
@@ -820,6 +822,30 @@ def debt_toggle(request, pk):
 ONBOARDING_ACCOUNTS = [('Especes', 'cash', '#f59e0b'),
                        ('Mobile Money', 'mobile', '#7c3aed'),
                        ('Banque', 'bank', '#0f766e')]
+
+
+TOUR_SLIDES = [
+    ('👋', 'Bienvenue dans Budget Control',
+     'Suivez vos depenses, vos revenus et votre solde. Vos donnees restent sur votre compte.'),
+    ('➕', 'Notez en 10 secondes',
+     "Ajoutez une depense ou un revenu en un geste : un montant, une categorie, c'est enregistre."),
+    ('💰', "Votre solde en un coup d'oeil",
+     'Le tableau de bord montre ce qu\'il vous reste ce mois-ci, report du mois passe inclus.'),
+    ('🎯', 'Budgets & alertes',
+     "Fixez des limites de depenses par periode. L'app vous previent avant le depassement."),
+    ('☰', 'Tout le reste dans le menu',
+     "Le bouton ☰ en haut ouvre : Recurrences, Objectifs d'epargne, Comptes, Dettes et Echeances a venir."),
+]
+
+
+@login_required
+def tour(request):
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        profile.tour_seen = True
+        profile.save(update_fields=['tour_seen'])
+        return redirect('dashboard')   # le dashboard enchaine vers l'assistant si besoin
+    return render(request, 'tour.html', {'slides': TOUR_SLIDES})
 
 
 @login_required

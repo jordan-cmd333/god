@@ -80,6 +80,17 @@ a { color: var(--primary); text-decoration: none; }
 .menu-item:active, .menu-item:hover { background: rgba(15, 118, 110, .09); }
 .menu-ico { font-size: 18px; width: 24px; text-align: center; }
 
+/* Tutoriel de premier lancement ------------------------------------------ */
+.tour-top { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.tour-body { text-align: center; padding: 28px 20px; min-height: 220px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.tour-emoji { font-size: 56px; line-height: 1; margin-bottom: 16px; }
+.tour-title { font-size: 20px; font-weight: 800; letter-spacing: -.01em; margin-bottom: 10px; color: var(--text); }
+.tour-text { font-size: 14.5px; line-height: 1.5; color: var(--muted); max-width: 40ch; }
+.tour-dots { display: flex; justify-content: center; gap: 8px; margin: 16px 0; }
+.tour-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background .15s, width .15s; }
+.tour-dot.is-active { background: var(--primary); width: 22px; border-radius: 4px; }
+
 .icon-btn {
   position: relative;
   display: inline-flex;
