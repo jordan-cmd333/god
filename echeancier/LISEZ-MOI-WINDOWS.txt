@@ -1,0 +1,54 @@
+ECHEANCIER - INSTALLATION SUR WINDOWS 11
+========================================
+
+Previent avant les dates limites d'un classeur Excel de suivi de taches.
+
+
+1. INSTALLER PYTHON
+-------------------
+   Telecharger Python 3.11 ou plus recent sur https://www.python.org/downloads/
+   IMPORTANT : cocher "Add python.exe to PATH" sur le premier ecran
+   de l'installateur, avant de cliquer sur "Install Now".
+
+
+2. PREPARER L'OUTIL
+-------------------
+   Copier ce dossier sur le poste, par exemple dans C:\Outils\echeancier
+   Clic droit sur le dossier > "Ouvrir dans le Terminal", puis taper :
+
+       py -m venv venv
+       venv\Scripts\pip install -r requirements.txt
+
+
+3. INDIQUER LE CLASSEUR
+-----------------------
+       echeancier.cmd init
+
+   Ouvrir le fichier echeancier.toml cree, et remplacer la ligne "chemin"
+   par le chemin du classeur, ENTRE APOSTROPHES SIMPLES :
+
+       chemin = 'C:\Users\prenom\Documents\taches.xlsx'
+
+   Verifier que le classeur est bien compris :
+
+       echeancier.cmd colonnes
+
+
+4. ESSAYER
+----------
+       echeancier.cmd verifier --tout --essai
+
+   Une bulle de notification doit apparaitre en bas a droite de l'ecran.
+   Si rien n'apparait, ajouter dans echeancier.toml, section
+   [notifications] :  style_bureau = "fenetre"
+
+
+5. AUTOMATISER
+--------------
+       powershell -ExecutionPolicy Bypass -File planification\installer.ps1
+
+   La verification aura lieu tous les jours a 8h30 et 2 minutes apres
+   l'ouverture de session.
+
+
+Documentation complete : README.md
