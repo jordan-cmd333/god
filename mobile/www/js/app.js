@@ -1637,6 +1637,14 @@ const App = (function () {
 
   // Parametres -------------------------------------------------------------
 
+  // Theme clair / sombre (preference d'appareil, stockee en localStorage) ----
+  function currentTheme() { try { return localStorage.getItem('bc-theme') || 'auto'; } catch (e) { return 'auto'; } }
+  function applyTheme(v) {
+    try { localStorage.setItem('bc-theme', v); } catch (e) { /* sans effet */ }
+    if (v === 'light' || v === 'dark') document.documentElement.setAttribute('data-theme', v);
+    else document.documentElement.removeAttribute('data-theme');
+  }
+
   Views.settings = async function () {
     const d = State.data;
     const stats = {
@@ -1649,11 +1657,20 @@ const App = (function () {
     };
     const hasPin = !!(await DB.metaGet('pin', null));
     const remindersOn = await DB.metaGet('remindersOn', false);
+    const theme = currentTheme();
     const html = `
       <div class="card"><h2 class="card-title">Preferences</h2><form data-form="prefs">
         <div class="field"><label>Devise</label><input name="currency" value="${cur()}"></div>
         <div class="field"><label>Seuil d'alerte (%)</label><input name="threshold" type="number" min="10" max="100" value="${State.threshold}"></div>
         <button class="btn btn-block">Enregistrer</button></form></div>
+
+      <div class="card"><h2 class="card-title">Apparence</h2>
+        <div class="chips">
+          <label class="chip"><input type="radio" name="theme" value="auto" ${theme === 'auto' ? 'checked' : ''}> 🌗 Auto</label>
+          <label class="chip"><input type="radio" name="theme" value="light" ${theme === 'light' ? 'checked' : ''}> ☀️ Clair</label>
+          <label class="chip"><input type="radio" name="theme" value="dark" ${theme === 'dark' ? 'checked' : ''}> 🌙 Sombre</label>
+        </div>
+        <p class="helptext" style="margin-top:10px">« Auto » suit le reglage de votre telephone.</p></div>
 
       <div class="card"><h2 class="card-title">Verrou (code PIN)</h2>
         <p class="helptext" style="margin-bottom:12px">Verrou de confort a l'ouverture. Vos donnees restent sur l'appareil et ne sont pas chiffrees.</p>
@@ -1708,6 +1725,9 @@ const App = (function () {
     return {
       title: 'Parametres', subtitle: 'Application 100 % hors ligne', html,
       mount: (root) => {
+        root.querySelectorAll('[name="theme"]').forEach((r) => r.addEventListener('change', (e) => {
+          applyTheme(e.target.value); go('#/settings');
+        }));
         root.querySelector('[data-form="prefs"]').addEventListener('submit', async (e) => {
           e.preventDefault(); const fd = new FormData(e.target);
           await DB.metaSet('currency', (fd.get('currency') || 'FCFA').trim());

@@ -1,27 +1,77 @@
 /* Budget Control — feuille de style mobile-first. */
 
 :root {
+  color-scheme: light;
   --bg: #f6f7f9;
   --surface: #ffffff;
+  --surface-2: #f1f4f7;
   --border: #e5e8ec;
+  --field-border: #d7dce2;
+  --track: #eef1f4;
   --text: #0f172a;
   --muted: #64748b;
   --faint: #94a3b8;
 
-  --primary: #0f766e;
+  --primary: #0f766e;        /* remplissage des boutons / entete */
+  --accent: #0f766e;         /* liens et elements actifs */
   --primary-soft: #ccfbf1;
   --primary-dark: #115e59;
+
   --warning: #b45309;
   --warning-soft: #fef3c7;
+  --warning-ink: #78350f;
   --danger: #b91c1c;
   --danger-soft: #fee2e2;
+  --danger-ink: #7f1d1d;
   --success: #15803d;
   --success-soft: #dcfce7;
+  --success-ink: #14532d;
+  --info-soft: #e0f2fe;
+  --info-ink: #075985;
+
+  --tabbar-bg: rgba(255, 255, 255, .96);
+  --chart-grid: #e9edf1;
+  --chart-text: #0f172a;
 
   --radius: 14px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 12px rgba(15, 23, 42, .04);
   --nav-height: 62px;
+}
+
+/* Mode sombre : automatique selon le systeme (sauf si force en clair), ou
+   force via [data-theme="dark"]. Les deux blocs sont identiques. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e141b; --surface: #19212c; --surface-2: #212b38;
+    --border: #2c3744; --field-border: #39434f; --track: #2a333f;
+    --text: #e7edf3; --muted: #9aa7b5; --faint: #6b7a8a;
+    --primary: #0f766e; --accent: #2dd4bf;
+    --primary-soft: rgba(45, 212, 191, .14); --primary-dark: #5eead4;
+    --warning: #fbbf24; --warning-soft: rgba(251, 191, 36, .14); --warning-ink: #fcd34d;
+    --danger: #f87171; --danger-soft: rgba(248, 113, 113, .14); --danger-ink: #fca5a5;
+    --success: #34d399; --success-soft: rgba(52, 211, 153, .14); --success-ink: #6ee7b7;
+    --info-soft: rgba(56, 189, 248, .14); --info-ink: #7dd3fc;
+    --tabbar-bg: rgba(20, 27, 37, .96);
+    --chart-grid: #2a333f; --chart-text: #e7edf3;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 18px rgba(0, 0, 0, .3);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e141b; --surface: #19212c; --surface-2: #212b38;
+  --border: #2c3744; --field-border: #39434f; --track: #2a333f;
+  --text: #e7edf3; --muted: #9aa7b5; --faint: #6b7a8a;
+  --primary: #0f766e; --accent: #2dd4bf;
+  --primary-soft: rgba(45, 212, 191, .14); --primary-dark: #5eead4;
+  --warning: #fbbf24; --warning-soft: rgba(251, 191, 36, .14); --warning-ink: #fcd34d;
+  --danger: #f87171; --danger-soft: rgba(248, 113, 113, .14); --danger-ink: #fca5a5;
+  --success: #34d399; --success-soft: rgba(52, 211, 153, .14); --success-ink: #6ee7b7;
+  --info-soft: rgba(56, 189, 248, .14); --info-ink: #7dd3fc;
+  --tabbar-bg: rgba(20, 27, 37, .96);
+  --chart-grid: #2a333f; --chart-text: #e7edf3;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 18px rgba(0, 0, 0, .3);
 }
 
 * { box-sizing: border-box; }
@@ -41,7 +91,7 @@ body {
   line-height: 1.5;
 }
 
-a { color: var(--primary); text-decoration: none; }
+a { color: var(--accent); text-decoration: none; }
 
 /* ---------------------------------------------------------------- Layout */
 
@@ -233,7 +283,7 @@ main { padding: 16px 16px 24px; max-width: 720px; margin: 0 auto; }
 .bar {
   height: 8px;
   border-radius: 99px;
-  background: #eef1f4;
+  background: var(--track);
   overflow: hidden;
 }
 
@@ -270,10 +320,10 @@ main { padding: 16px 16px 24px; max-width: 720px; margin: 0 auto; }
 }
 
 .alert .ico { font-size: 15px; line-height: 1.3; }
-.alert-warning { background: var(--warning-soft); border-color: #fcd34d; color: #78350f; }
-.alert-error, .alert-exceeded { background: var(--danger-soft); border-color: #fca5a5; color: #7f1d1d; }
-.alert-success { background: var(--success-soft); border-color: #86efac; color: #14532d; }
-.alert-info { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
+.alert-warning { background: var(--warning-soft); border-color: var(--warning-ink); color: var(--warning-ink); }
+.alert-error, .alert-exceeded { background: var(--danger-soft); border-color: var(--danger-ink); color: var(--danger-ink); }
+.alert-success { background: var(--success-soft); border-color: var(--success-ink); color: var(--success-ink); }
+.alert-info { background: var(--info-soft); border-color: var(--info-ink); color: var(--info-ink); }
 
 /* ------------------------------------------------------------------ Lists */
 
@@ -332,7 +382,7 @@ input[type=email], select, textarea {
   font-family: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid #d7dce2;
+  border: 1px solid var(--field-border);
   border-radius: var(--radius-sm);
   outline: none;
 }
@@ -431,7 +481,7 @@ input[type=color] { height: 44px; padding: 4px; }
   grid-template-columns: repeat(5, 1fr);
   height: var(--nav-height);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: rgba(255, 255, 255, .96);
+  background: var(--tabbar-bg);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
 }
@@ -448,7 +498,7 @@ input[type=color] { height: 44px; padding: 4px; }
 }
 
 .tabbar a .ico { font-size: 19px; line-height: 1; }
-.tabbar a.active { color: var(--primary); }
+.tabbar a.active { color: var(--accent); }
 
 .tabbar .fab-slot { position: relative; }
 
@@ -473,7 +523,7 @@ input[type=color] { height: 44px; padding: 4px; }
 /* Le vert distingue d'un coup d'oeil ce qui rentre de ce qui sort. */
 .hero-income { background: linear-gradient(150deg, #15803d 0%, #126b34 100%); }
 .btn-income { background: var(--success); }
-.summary-bar-income { background: var(--success-soft); color: #14532d; }
+.summary-bar-income { background: var(--success-soft); color: var(--success-ink); }
 .row-amount.income { color: var(--success); }
 
 .balance-row {

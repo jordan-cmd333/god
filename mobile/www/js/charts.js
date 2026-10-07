@@ -8,6 +8,17 @@
   var MUTED = '#94a3b8';
   var GRID = '#e9edf1';
   var TEAL = '#0f766e';
+  var TEXT = '#0f172a';
+
+  // Couleurs lues sur le theme courant (clair / sombre) a chaque rendu.
+  function refreshColors() {
+    var cs = getComputedStyle(document.documentElement);
+    function v(name, fb) { var x = cs.getPropertyValue(name).trim(); return x || fb; }
+    MUTED = v('--muted', '#94a3b8');
+    GRID = v('--chart-grid', '#e9edf1');
+    TEAL = v('--primary', '#0f766e');
+    TEXT = v('--chart-text', '#0f172a');
+  }
 
   function setup(canvas, height) {
     var ratio = window.devicePixelRatio || 1;
@@ -62,7 +73,7 @@
     });
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = TEXT;
     ctx.font = '600 19px system-ui, sans-serif';
     ctx.fillText(compact(total), cx, cy + 2);
     ctx.fillStyle = MUTED;
@@ -107,7 +118,7 @@
 
       ctx.textAlign = 'center';
       if (d.value > 0) {
-        ctx.fillStyle = '#0f172a';
+        ctx.fillStyle = TEXT;
         ctx.font = '600 11px system-ui, sans-serif';
         ctx.fillText(compact(d.value), x + barW / 2, y - 5);
       }
@@ -181,7 +192,7 @@
       ctx.arc(pp[0], pp[1], 3.5, 0, Math.PI * 2);
       ctx.fillStyle = TEAL;
       ctx.fill();
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = TEXT;
       ctx.font = '600 11px system-ui, sans-serif';
       ctx.textAlign = pp[0] > s.w - 40 ? 'right' : 'center';
       ctx.fillText(compact(data[peak].value), pp[0], pp[1] - 8);
@@ -202,6 +213,7 @@
   var RENDERERS = { donut: donut, bars: bars, line: line };
 
   function renderAll() {
+    refreshColors();
     document.querySelectorAll('canvas[data-chart]').forEach(function (canvas) {
       var kind = canvas.getAttribute('data-chart');
       var renderer = RENDERERS[kind];
