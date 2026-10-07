@@ -6,6 +6,12 @@
       "runtimeExecutable": "./venv/bin/python",
       "runtimeArgs": ["manage.py", "runserver", "8010"],
       "port": 8010
+    },
+    {
+      "name": "mobile",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8011", "--directory", "mobile/www"],
+      "port": 8011
     }
   ]
 }
