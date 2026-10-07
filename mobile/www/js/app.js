@@ -240,8 +240,12 @@ const App = (function () {
     }).join('') + '</div>';
   }
 
-  function emptyBlock(ic, text, link) {
-    return `<div class="empty"><span class="big">${ic}</span>${text}${link ? '<br>' + link : ''}</div>`;
+  function emptyBlock(ic, text, link, sub) {
+    return `<div class="empty">
+      <span class="empty-badge">${ic}</span>
+      <p class="empty-text">${text}</p>
+      ${sub ? `<p class="empty-sub">${sub}</p>` : ''}
+      ${link ? `<div class="empty-cta">${link}</div>` : ''}</div>`;
   }
 
   // --- Vues ---------------------------------------------------------------
@@ -312,7 +316,8 @@ const App = (function () {
     if (statuses.length) {
       statuses.forEach((st) => html += limitRow(st, false));
     } else {
-      html += emptyBlock('🎯', 'Aucune limite definie.', '<a href="#/budgets">Definir un budget</a>');
+      html += emptyBlock('🎯', 'Aucune limite definie.', '<a href="#/budgets">Definir un budget</a>',
+        'Fixez un plafond par categorie pour garder vos depenses sous controle.');
     }
     html += `</div>`;
 
@@ -336,7 +341,8 @@ const App = (function () {
         <span class="s">${fmtDate(e.date)} · ${EXPENSE_METHODS[e.method] || ''}</span></span>
         <span class="row-amount">${money(e.amount)}</span></li>`; });
     } else {
-      html += emptyBlock('🧾', 'Aucune depense enregistree.', '<a href="#/expense/new">Ajouter la premiere</a>');
+      html += emptyBlock('🧾', 'Aucune depense enregistree.', '<a href="#/expense/new">Ajouter la premiere</a>',
+        'Vos depenses apparaitront ici, du plus recent au plus ancien.');
     }
     html += `</ul></div>`;
 
@@ -614,7 +620,8 @@ const App = (function () {
       });
       html += `</ul>`;
     } else {
-      html += emptyBlock('🔁', 'Aucune recurrence definie.', '<a href="#/recurrence/new?kind=expense">Ajouter la premiere</a>');
+      html += emptyBlock('🔁', 'Aucune recurrence definie.', '<a href="#/recurrence/new?kind=expense">Ajouter la premiere</a>',
+        'Loyer, abonnements, salaire : automatisez ce qui revient chaque mois.');
     }
     html += `</div>`;
     return {
@@ -819,7 +826,8 @@ const App = (function () {
     if (list.length) {
       list.forEach((g) => html += goalCard(g));
     } else {
-      html += `<div class="card">${emptyBlock('🐖', "Aucun objectif d'epargne.", '<a href="#/goal/new">Definir un objectif</a>')}</div>`;
+      html += `<div class="card">${emptyBlock('🐖', "Aucun objectif d'epargne.", '<a href="#/goal/new">Definir un objectif</a>',
+        'Donnez un cap a votre epargne et suivez la progression au fil du temps.')}</div>`;
     }
     return {
       title: "Objectifs d'epargne", subtitle: 'Mettez de cote, suivez vos progres', tab: 'goals', html,
@@ -932,7 +940,8 @@ const App = (function () {
       });
       html += `</ul></div>`;
     } else {
-      html += `<div class="card">${emptyBlock('👛', 'Aucun compte defini.', '<a href="#/account/new">Ajouter un compte</a>')}</div>`;
+      html += `<div class="card">${emptyBlock('👛', 'Aucun compte defini.', '<a href="#/account/new">Ajouter un compte</a>',
+        'Especes, banque, mobile money : regroupez vos soldes en un coup d\'oeil.')}</div>`;
     }
     return { title: 'Comptes', subtitle: 'Especes, mobile money, banque...', html };
   };
@@ -1148,7 +1157,9 @@ const App = (function () {
       html += `</ul>`;
     } else {
       html += emptyBlock('🤝', isOwe ? 'Aucune dette a rembourser.' : "Personne ne vous doit d'argent.",
-        `<a href="#/debt/new?dir=${direction}">Ajouter</a>`);
+        `<a href="#/debt/new?dir=${direction}">Ajouter</a>`,
+        isOwe ? 'Suivez ce que vous devez et soldez-le sans rien oublier.'
+              : 'Notez vos prets pour savoir qui doit quoi, et depuis quand.');
     }
     return html + `</div>`;
   }
@@ -1250,7 +1261,8 @@ const App = (function () {
     const goalSoon = goalsDueSoon(ref, 30);
     let html = '';
     if (!due.length && !soon.length && !goalSoon.length) {
-      html += `<div class="card">${emptyBlock('📅', 'Rien a venir dans les 30 prochains jours.', '<a href="#/recurrences">Ajouter une recurrence</a>')}</div>`;
+      html += `<div class="card">${emptyBlock('📅', 'Rien a venir dans les 30 prochains jours.', '<a href="#/recurrences">Ajouter une recurrence</a>',
+        'Vos prochaines echeances recurrentes s\'afficheront ici automatiquement.')}</div>`;
     }
     if (due.length) {
       html += `<div class="card"><h2 class="card-title">A confirmer <a href="#/recurrences">Gerer</a></h2>`;
@@ -1378,7 +1390,7 @@ const App = (function () {
           <a class="btn btn-ghost btn-sm" href="${opts.editBase}/${r.id}">✏️</a></li>`;
       });
     } else {
-      html += emptyBlock('🔍', 'Aucun resultat pour ces filtres.');
+      html += emptyBlock('🔍', 'Aucun resultat pour ces filtres.', '', 'Essayez une autre periode ou effacez les filtres actifs.');
     }
     html += `</ul>${rows.length > 300 ? `<p class="table-note">300 sur ${rows.length} affiches. Affinez les filtres.</p>` : ''}</div>`;
 
@@ -1434,7 +1446,7 @@ const App = (function () {
 
     html += `<div class="card"><h2 class="card-title">Sources de revenus <a href="#/sources">Gerer</a></h2>
       ${chart('donut', monthBreak.map((r) => ({ label: r.name, value: r.total, color: r.color })))}
-      ${monthBreak.length ? legend(monthBreak) : emptyBlock('💵', 'Aucun revenu ce mois-ci.', '<a href="#/income/new">Enregistrer une rentree</a>')}
+      ${monthBreak.length ? legend(monthBreak) : emptyBlock('💵', 'Aucun revenu ce mois-ci.', '<a href="#/income/new">Enregistrer une rentree</a>', 'Enregistrez vos rentrees pour suivre votre solde reel du mois.')}
       ${top ? `<div class="alert alert-success" style="margin:14px 0 0"><span class="ico">🏆</span>
         <div>Votre principale source est <b>${esc(top.name)}</b> : ${money(top.total)} ${cur()} ce mois-ci (${Math.round(top.share)} % de vos rentrees).
         ${top.share > 70 ? ' Une part aussi concentree rend vos finances dependantes d\'une seule source.' : ''}</div></div>` : ''}</div>`;
@@ -1457,7 +1469,7 @@ const App = (function () {
         <span class="s">${fmtDate(i.date)} · ${INCOME_METHODS[i.method] || ''}</span></span>
         <span class="row-amount income">+${money(i.amount)}</span>
         <a class="btn btn-ghost btn-sm" href="#/income/${i.id}">✏️</a></li>`; });
-    } else { html += emptyBlock('🧾', 'Aucun revenu enregistre.', '<a href="#/income/new">Ajouter le premier</a>'); }
+    } else { html += emptyBlock('🧾', 'Aucun revenu enregistre.', '<a href="#/income/new">Ajouter le premier</a>', 'Salaire, ventes, cadeaux : chaque rentree compte pour votre solde.'); }
     html += `</ul></div>`;
 
     return { title: 'Revenus', subtitle: "D'ou vient votre argent", tab: 'incomes', html };
