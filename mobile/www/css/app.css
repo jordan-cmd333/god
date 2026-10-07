@@ -144,6 +144,19 @@ a { color: var(--accent); text-decoration: none; }
 .tour-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background .15s, width .15s; }
 .tour-dot.is-active { background: var(--primary); width: 22px; border-radius: 4px; }
 
+/* Micro-animations -------------------------------------------------------- */
+@keyframes view-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+#view.view-enter { animation: view-in .22s ease both; }
+
+.btn, .chip, .icon-btn, .menu-item { transition: transform .08s ease, background .15s ease; }
+.btn:active, .chip:active { transform: scale(.97); }
+.icon-btn:active, .menu-item:active { transform: scale(.93); }
+
+@media (prefers-reduced-motion: reduce) {
+  #view.view-enter { animation: none; }
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
 .icon-btn {
   position: relative;
   display: inline-flex;

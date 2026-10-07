@@ -125,6 +125,38 @@ const App = (function () {
     window.scrollTo(0, 0);
     if (window.ChartsRender) window.ChartsRender();
     if (view.mount) view.mount(main);
+    playEnter(main);
+  }
+
+  // --- Micro-animations ---------------------------------------------------
+  const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function playEnter(main) {
+    if (reduceMotion()) return;
+    main.classList.remove('view-enter'); void main.offsetWidth; main.classList.add('view-enter');
+    // Barres de progression : remplissage depuis 0 (filet setTimeout si pas de compositing).
+    main.querySelectorAll('.bar > span').forEach((span) => {
+      const w = span.style.width; if (!w) return;
+      span.style.width = '0';
+      setTimeout(() => { span.style.width = w; }, 30);
+    });
+    // Chiffres cles : comptage anime.
+    main.querySelectorAll('[data-count]').forEach(countUp);
+  }
+
+  function countUp(el) {
+    const to = parseFloat(el.getAttribute('data-count'));
+    if (!isFinite(to)) return;
+    const t0 = performance.now(), dur = 600;
+    let raf;
+    function frame(t) {
+      const p = Math.min(1, (t - t0) / dur);
+      el.textContent = money(to * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) raf = requestAnimationFrame(frame);
+    }
+    el.textContent = money(0);
+    raf = requestAnimationFrame(frame);
+    setTimeout(() => { if (raf) cancelAnimationFrame(raf); el.textContent = money(to); }, dur + 150);
   }
 
   let flashMsg = null;
@@ -175,7 +207,7 @@ const App = (function () {
       ${ratio != null ? `<div class="bar ${barCls}" style="margin:10px 0 6px"><span style="width:${barPct}%"></span></div>
         <div class="limit-foot" style="margin-bottom:10px"><span>${Math.round(ratio)} % de vos revenus depenses</span></div>` : ''}
       <div class="balance-row balance-total"><span class="balance-label">${bal.isPositive ? 'Solde disponible' : 'Solde negatif'}</span>
-        <span class="balance-value ${bal.isPositive ? 'down' : 'up'}">${money(Math.abs(bal.available))} ${cur()}</span></div>
+        <span class="balance-value ${bal.isPositive ? 'down' : 'up'}"><span data-count="${Math.abs(bal.available)}">${money(Math.abs(bal.available))}</span> ${cur()}</span></div>
       ${extra}</div>`;
   }
 
@@ -241,7 +273,7 @@ const App = (function () {
     if (unread.length) html += `<form data-action="alerts-read" style="margin-bottom:14px"><button class="btn btn-ghost btn-sm">Marquer les alertes comme lues</button></form>`;
 
     html += `<div class="card hero"><div class="label">Depenses d'aujourd'hui</div>
-      <div class="value">${money(day.current)}<span class="cur">${cur()}</span></div>
+      <div class="value"><span data-count="${day.current}">${money(day.current)}</span><span class="cur">${cur()}</span></div>
       <div class="delta">${day.variation != null
         ? `${day.improving ? '▼' : '▲'} ${Math.round(Math.abs(day.variation))} % par rapport a hier (${money(day.previous)} ${cur()})`
         : 'Aucune depense hier — pas de comparaison possible'}</div>
@@ -890,7 +922,7 @@ const App = (function () {
       <a href="#/account/new" class="btn">＋ Nouveau compte</a></div>`;
     if (list.length) {
       html += `<div class="card hero"><div class="label">Total sur vos comptes</div>
-        <div class="value">${money(total)}<span class="cur">${cur()}</span></div></div>`;
+        <div class="value"><span data-count="${total}">${money(total)}</span><span class="cur">${cur()}</span></div></div>`;
       html += `<div class="card"><ul class="list">`;
       list.forEach((a) => {
         html += `<li class="row"><span class="row-icon" style="background:${a.color}">${icon(a.icon)}</span>
@@ -1387,7 +1419,7 @@ const App = (function () {
     const m = summaries.month;
 
     let html = `<div class="card hero hero-income"><div class="label">Revenus de ce mois-ci</div>
-      <div class="value">${money(m.current)}<span class="cur">${cur()}</span></div>
+      <div class="value"><span data-count="${m.current}">${money(m.current)}</span><span class="cur">${cur()}</span></div>
       <div class="delta">${m.variation != null
         ? `${m.improving ? '▲' : '▼'} ${Math.round(Math.abs(m.variation))} % par rapport au mois dernier (${money(m.previous)} ${cur()})`
         : 'Aucun revenu le mois dernier — pas de comparaison'}</div>
