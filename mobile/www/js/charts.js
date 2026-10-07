@@ -111,10 +111,14 @@
     data.forEach(function (d, i) {
       var slice = (d.value / total) * Math.PI * 2;
       segs.push({ a0: angle, a1: angle + slice, i: i });
+      // L'espacement ne doit jamais depasser la part, sinon l'arc se dessine
+      // a l'envers (fin < debut) et repeint tout l'anneau. On le borne a la
+      // moitie de la part : chaque couleur reste visible, meme minuscule.
+      var g = Math.min(gap, slice * 0.5);
       ctx.beginPath();
-      ctx.arc(cx, cy, mid, angle + gap / 2, angle + slice - gap / 2);
+      ctx.arc(cx, cy, mid, angle + g / 2, angle + slice - g / 2);
       ctx.lineWidth = (hi === i ? lw + 5 : lw);
-      ctx.lineCap = gap ? 'round' : 'butt';
+      ctx.lineCap = g > 0.012 ? 'round' : 'butt';
       ctx.strokeStyle = d.color || TEAL;
       ctx.globalAlpha = (hi == null || hi === i) ? 1 : 0.32;
       ctx.stroke();
