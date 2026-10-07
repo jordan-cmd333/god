@@ -324,7 +324,7 @@ label, .form-label {
   margin-bottom: 5px;
 }
 
-input[type=text], input[type=number], input[type=date], input[type=password],
+input:not([type]), input[type=text], input[type=number], input[type=date], input[type=password],
 input[type=email], select, textarea {
   width: 100%;
   padding: 11px 12px;
@@ -361,6 +361,7 @@ input[type=color] { height: 44px; padding: 4px; }
 .goal-contrib { display: flex; gap: 8px; align-items: stretch; }
 .goal-contrib .amount-input {
   flex: 1 1 auto;
+  width: auto;                  /* annule le width:100% de base dans la rangee flex */
   min-width: 0;                 /* autorise le champ a se retrecir */
   font-size: 17px !important;
   text-align: left;
@@ -417,8 +418,8 @@ input[type=color] { height: 44px; padding: 4px; }
 .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
 .btn-danger { background: var(--surface); border-color: #fca5a5; color: var(--danger); }
 .btn-sm { padding: 7px 11px; font-size: 13px; border-radius: 8px; }
-.btn-row { display: flex; gap: 10px; }
-.btn-row .btn { flex: 1; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn-row .btn { flex: 1; min-width: 0; }
 
 /* ------------------------------------------------------------ Bottom nav */
 
