@@ -24,6 +24,18 @@
 </div>
 
 <div class="card">
+  <h2 class="card-title">Apparence</h2>
+  <p class="helptext" style="margin-bottom:10px">
+    Theme de l'application. « Automatique » suit le reglage de votre appareil.
+  </p>
+  <div class="chips" id="theme-chips">
+    <label class="chip"><input type="radio" name="bc-theme-opt" value="auto"> 🌗 Automatique</label>
+    <label class="chip"><input type="radio" name="bc-theme-opt" value="light"> ☀️ Clair</label>
+    <label class="chip"><input type="radio" name="bc-theme-opt" value="dark"> 🌙 Sombre</label>
+  </div>
+</div>
+
+<div class="card">
   <h2 class="card-title">Configuration</h2>
   <ul class="list">
     <li class="row">
@@ -150,4 +162,31 @@
     <button class="btn btn-danger btn-block">Se deconnecter</button>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Theme clair / sombre : preference stockee en localStorage, appliquee sur
+  // chaque page par le script en tete de base.html (evite le flash).
+  (function () {
+    var KEY = 'bc-theme';
+    function current() { try { return localStorage.getItem(KEY) || 'auto'; } catch (e) { return 'auto'; } }
+    function apply(v) {
+      try { localStorage.setItem(KEY, v); } catch (e) { /* sans effet */ }
+      var root = document.documentElement;
+      if (v === 'light' || v === 'dark') root.setAttribute('data-theme', v);
+      else root.removeAttribute('data-theme');
+    }
+    var now = current();
+    var inputs = document.querySelectorAll('input[name="bc-theme-opt"]');
+    inputs.forEach(function (inp) {
+      if (inp.value === now) { inp.checked = true; inp.closest('.chip').classList.add('is-active'); }
+      inp.addEventListener('change', function () {
+        inputs.forEach(function (i) { i.closest('.chip').classList.toggle('is-active', i.checked); });
+        apply(inp.value);
+        if (window.ChartsRender) window.ChartsRender();
+      });
+    });
+  })();
+</script>
 {% endblock %}
